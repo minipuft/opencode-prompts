@@ -2,5 +2,7 @@
   "name": "opencode-prompts-plugin",
   "version": "1.0.0",
   "type": "module",
-  "dependencies": {}
+  "dependencies": {
+    "@opencode-ai/plugin": "1.1.19"
+  }
 }
