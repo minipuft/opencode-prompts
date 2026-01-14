@@ -1,0 +1,13 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "opencode-prompts": {
+      "command": "node",
+      "args": ["${projectDir}/server/dist/index.js", "--transport=stdio"],
+      "env": {
+        "MCP_WORKSPACE": "${projectDir}",
+        "MCP_RESOURCES_PATH": "${projectDir}/server/resources"
+      }
+    }
+  }
+}

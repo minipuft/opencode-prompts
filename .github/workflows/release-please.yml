@@ -1,0 +1,39 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # Notify upstream repo when a release is created
+  notify-upstream:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger upstream submodule update
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.UPSTREAM_DISPATCH_TOKEN }}
+          repository: minipuft/claude-prompts-mcp
+          event-type: downstream-release
+          client-payload: '{"version": "${{ needs.release-please.outputs.tag_name }}", "source": "opencode-prompts"}'
+        continue-on-error: true  # Don't fail if token not configured

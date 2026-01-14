@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.opencode/node_modules/
+
+# Build outputs
+dist/
+*.js
+*.d.ts
+*.js.map
+!jest.config.js
+
+# Runtime state
+.opencode/.bun/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
