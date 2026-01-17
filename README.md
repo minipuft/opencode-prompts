@@ -26,7 +26,9 @@ OpenCode loads plugins automatically. Restart your session to activate.
 
 ---
 
-## What Works
+## What Works (Always, No Extra Setup)
+
+These features work with the native OpenCode plugin API — no additional dependencies required:
 
 | Hook | Triggers | Effect |
 |------|----------|--------|
@@ -94,23 +96,30 @@ List available prompts from the claude-prompts MCP server, then run diagnose
 
 [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) provides Claude Code hook compatibility, including `UserPromptSubmit`.
 
-**Setup:**
+**Installation:**
 
-1. Install oh-my-opencode:
-   ```bash
-   npm install -g oh-my-opencode
-   ```
+```bash
+# Interactive installer (recommended)
+npx oh-my-opencode install
 
-2. **That's it!** The plugin auto-creates `.claude/settings.json` on first load with the correct hooks.
+# Or with bun
+bunx oh-my-opencode install
+```
+
+**That's it!** This plugin auto-creates `.claude/settings.json` on first load with the correct hooks.
 
 **What happens automatically:**
-- Plugin creates `.claude/settings.json` in your project (if missing)
-- Hooks are configured to route through our `prompt-suggest.py`
+
+- Plugin detects first load and creates `.claude/settings.json` in your project
+- Hooks are configured to route `UserPromptSubmit` through our `prompt-suggest.py`
 - `>>prompt` syntax detection works immediately
+- Existing `.claude/settings.json` files are merged (not overwritten)
 
-**Note:** This uses project-local `.claude/settings.json`, not `~/.claude/`. Hooks stay within the plugin.
+**Graceful degradation:** If oh-my-opencode is not installed, the `.claude/settings.json` file is created but ignored. Native plugin features (chain tracking, gate reminders, state preservation) continue to work normally.
 
-**Manual override:** If you need custom hook configuration, edit `.claude/settings.json` or copy `.claude/settings.json.example` as a starting point.
+**Note:** This uses project-local `.claude/settings.json`, not `~/.claude/`. Hooks stay within the plugin directory.
+
+**Manual override:** If you need custom hook configuration, edit `.claude/settings.json` or use `.claude/settings.json.example` as a reference.
 
 ### Feature Request
 
@@ -193,6 +202,10 @@ git submodule update --remote --merge
 ---
 
 ## Comparison: OpenCode vs Claude Code vs Gemini
+
+**Baseline (native plugin):** Chain tracking, gate reminders, and state preservation work without any additional setup.
+
+**Enhanced (+ oh-my-opencode):** Adds `>>prompt` syntax detection and argument suggestions.
 
 | Feature | Claude Code | Gemini CLI | OpenCode | OpenCode + oh-my-opencode |
 |---------|-------------|------------|----------|---------------------------|
