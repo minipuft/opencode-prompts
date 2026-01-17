@@ -90,9 +90,29 @@ The model can discover prompts dynamically:
 List available prompts from the claude-prompts MCP server, then run diagnose
 ```
 
+### Option 4: oh-my-opencode Integration (Full Feature Parity)
+
+[oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) provides Claude Code hook compatibility, including `UserPromptSubmit`.
+
+**Setup:**
+
+1. Install oh-my-opencode:
+   ```bash
+   npm install -g oh-my-opencode
+   ```
+
+2. Copy the example config to your project:
+   ```bash
+   cp .opencode/plugin/opencode-prompts/.claude/settings.json.example .claude/settings.json
+   ```
+
+3. The config routes `UserPromptSubmit` to our `prompt-suggest.py` hook. Now `>>prompt` syntax works.
+
+**Note:** This uses project-local `.claude/settings.json`, not `~/.claude/`. Hooks stay within the plugin.
+
 ### Feature Request
 
-If you want native `>>prompt` detection in OpenCode, request a `tui.prompt.submit` or `message.before` hook at [OpenCode GitHub](https://github.com/sst/opencode/issues).
+If you want native `>>prompt` detection in OpenCode (without oh-my-opencode), request a `tui.prompt.submit` or `message.before` hook at [OpenCode GitHub](https://github.com/sst/opencode/issues).
 
 ---
 
@@ -142,13 +162,13 @@ opencode-prompts/
 
 ### Hook Mapping
 
-| OpenCode Hook | Claude Code Equivalent | Purpose |
-|---------------|------------------------|---------|
-| `tool.execute.after` | `PostToolUse` | Chain/gate tracking |
-| `experimental.session.compacting` | `PreCompact` | State preservation |
-| `session.created` | `SessionStart` | Initialization |
-| `session.deleted` | `Stop` | Cleanup |
-| ❌ Not available | `UserPromptSubmit` | Prompt syntax detection |
+| OpenCode Hook | Claude Code Equivalent | Purpose | oh-my-opencode |
+|---------------|------------------------|---------|-----------------|
+| `tool.execute.after` | `PostToolUse` | Chain/gate tracking | ✅ |
+| `experimental.session.compacting` | `PreCompact` | State preservation | ✅ |
+| `session.created` | `SessionStart` | Initialization | ✅ |
+| `session.deleted` | `Stop` | Cleanup | ✅ |
+| ❌ Not available | `UserPromptSubmit` | Prompt syntax detection | ✅ Fills gap |
 
 ---
 
@@ -172,13 +192,13 @@ git submodule update --remote --merge
 
 ## Comparison: OpenCode vs Claude Code vs Gemini
 
-| Feature | Claude Code | Gemini CLI | OpenCode |
-|---------|-------------|------------|----------|
-| Chain tracking | ✅ | ✅ | ✅ |
-| Gate reminders | ✅ | ✅ | ✅ |
-| State preservation | ✅ | ✅ | ✅ |
-| `>>prompt` detection | ✅ | ✅ | ❌ |
-| Argument suggestions | ✅ | ✅ | ❌ |
+| Feature | Claude Code | Gemini CLI | OpenCode | OpenCode + oh-my-opencode |
+|---------|-------------|------------|----------|---------------------------|
+| Chain tracking | ✅ | ✅ | ✅ | ✅ |
+| Gate reminders | ✅ | ✅ | ✅ | ✅ |
+| State preservation | ✅ | ✅ | ✅ | ✅ |
+| `>>prompt` detection | ✅ | ✅ | ❌ | ✅ |
+| Argument suggestions | ✅ | ✅ | ❌ | ✅ |
 
 ---
 
@@ -186,6 +206,7 @@ git submodule update --remote --merge
 
 - [claude-prompts-mcp](https://github.com/minipuft/claude-prompts-mcp) — Core MCP server
 - [gemini-prompts](https://github.com/minipuft/gemini-prompts) — Gemini CLI extension (full hook support)
+- [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) — Claude Code compatibility layer for OpenCode
 - [OpenCode Plugins Docs](https://opencode.ai/docs/plugins/)
 
 ---

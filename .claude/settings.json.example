@@ -1,0 +1,43 @@
+{
+  "$comment": [
+    "oh-my-opencode integration for full Claude Code hook support.",
+    "Copy this file to .claude/settings.json in your project root.",
+    "Requires: oh-my-opencode plugin (npm install -g oh-my-opencode)",
+    "See: https://github.com/code-yeongyu/oh-my-opencode"
+  ],
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .opencode/plugin/opencode-prompts/core/hooks/prompt-suggest.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*prompt_engine*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .opencode/plugin/opencode-prompts/core/hooks/post-prompt-engine.py"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .opencode/plugin/opencode-prompts/core/hooks/pre-compact.py"
+          }
+        ]
+      }
+    ]
+  }
+}
