@@ -101,14 +101,16 @@ List available prompts from the claude-prompts MCP server, then run diagnose
    npm install -g oh-my-opencode
    ```
 
-2. Copy the example config to your project:
-   ```bash
-   cp .opencode/plugin/opencode-prompts/.claude/settings.json.example .claude/settings.json
-   ```
+2. **That's it!** The plugin auto-creates `.claude/settings.json` on first load with the correct hooks.
 
-3. The config routes `UserPromptSubmit` to our `prompt-suggest.py` hook. Now `>>prompt` syntax works.
+**What happens automatically:**
+- Plugin creates `.claude/settings.json` in your project (if missing)
+- Hooks are configured to route through our `prompt-suggest.py`
+- `>>prompt` syntax detection works immediately
 
 **Note:** This uses project-local `.claude/settings.json`, not `~/.claude/`. Hooks stay within the plugin.
+
+**Manual override:** If you need custom hook configuration, edit `.claude/settings.json` or copy `.claude/settings.json.example` as a starting point.
 
 ### Feature Request
 
