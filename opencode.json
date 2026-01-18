@@ -3,9 +3,9 @@
   "mcp": {
     "claude-prompts": {
       "type": "local",
-      "command": ["node", "server/dist/index.js", "--transport=stdio"],
+      "command": ["npx", "claude-prompts", "--transport=stdio"],
       "environment": {
-        "MCP_WORKSPACE": "."
+        "MCP_WORKSPACE": "./node_modules/claude-prompts"
       }
     }
   }

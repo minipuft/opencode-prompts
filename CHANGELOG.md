@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Migrated from git submodule to npm dependency** - Now uses `claude-prompts` npm package instead of git submodule
+  - Removed `core/` submodule directory
+  - Removed `server` symlink
+  - Added `claude-prompts` as npm dependency
+  - Plugin hooks now reference `node_modules/claude-prompts/hooks/`
+  - Simplified CI workflow (no submodule checkout needed)
+  - Removed `update-submodule.yml` workflow (replaced by Dependabot)
+
+## [1.4.0] - 2025-01-17
+
+### Added
+
+- **CLI for npm publishing** - Install/uninstall hooks via `npx opencode-prompts install/uninstall`
+- `src/cli/index.ts` - CLI entry point with help and version commands
+- `src/cli/commands/install.ts` - Safe hook installation with merge support
+- `src/cli/commands/uninstall.ts` - Safe hook removal preserving other hooks
+- `src/lib/hooks-config.ts` - Shared hooks configuration module
+- npm publish workflow (`.github/workflows/npm-publish.yml`)
+
+### Changed
+
+- Package now publishable to npm with `bin` and `files` configuration
+- README updated with npm installation instructions
+- CI workflow now includes build step
+
+### Fixed
+
+- Test expectations for MCP server name (`claude-prompts` not `opencode-prompts`)
+- Test for core server checking config.json instead of package.json (dist branch)
+
 ## [1.2.0] - 2025-01-13
 
 ### Added
@@ -33,5 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Server symlink for cache access
 - In-memory session state with optional file persistence
 
-[Unreleased]: https://github.com/minipuft/opencode-prompts/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/minipuft/opencode-prompts/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/minipuft/opencode-prompts/compare/v1.2.0...v1.4.0
 [1.2.0]: https://github.com/minipuft/opencode-prompts/releases/tag/v1.2.0

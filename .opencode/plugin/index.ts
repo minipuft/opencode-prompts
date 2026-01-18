@@ -17,7 +17,6 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, relative } from "path";
-import { fileURLToPath } from "url";
 import { loadPromptsCache } from "../../src/lib/cache-manager.js";
 import {
   loadSessionState,
@@ -100,9 +99,8 @@ interface ClaudeSettings {
  * - PreCompact: state preservation (supplements native plugin)
  *
  * @param projectDir - Project root directory
- * @param pluginDir - Plugin installation directory
  */
-function setupClaudeHooksConfig(projectDir: string | undefined, pluginDir: string): void {
+function setupClaudeHooksConfig(projectDir: string | undefined): void {
   if (!projectDir) {
     console.log("[opencode-prompts] No project directory, skipping hooks setup");
     return;
@@ -111,8 +109,8 @@ function setupClaudeHooksConfig(projectDir: string | undefined, pluginDir: strin
   const claudeDir = join(projectDir, ".claude");
   const settingsPath = join(claudeDir, "settings.json");
 
-  // Calculate relative path from project to plugin hooks
-  const hooksDir = join(pluginDir, "core", "hooks");
+  // Calculate relative path from project to hooks in node_modules
+  const hooksDir = join(projectDir, "node_modules", "claude-prompts", "hooks");
   const relativeHooksDir = relative(projectDir, hooksDir);
 
   // Define our hooks configuration
@@ -205,9 +203,6 @@ function setupClaudeHooksConfig(projectDir: string | undefined, pluginDir: strin
  * Tracks chain/gate state and provides context injection for
  * the claude-prompts MCP server.
  */
-// Plugin root directory (resolved from this file's location)
-const PLUGIN_DIR = join(fileURLToPath(import.meta.url), "..", "..", "..");
-
 export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
   const projectDir = ctx.project?.directory ?? ctx.directory;
 
@@ -215,7 +210,7 @@ export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
 
   // Auto-setup .claude/settings.json for oh-my-opencode integration
   // This enables UserPromptSubmit hook for >>prompt syntax detection
-  setupClaudeHooksConfig(projectDir, PLUGIN_DIR);
+  setupClaudeHooksConfig(projectDir);
 
   // Pre-load cache for faster access
   const cache = loadPromptsCache(projectDir);

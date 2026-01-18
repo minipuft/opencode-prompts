@@ -4,7 +4,7 @@
  * Validates plugin structure, configuration, and critical dependencies.
  */
 
-import { existsSync, lstatSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -19,8 +19,10 @@ describe("OpenCode Plugin Structure", () => {
 
     const config = JSON.parse(readFileSync(configPath, "utf-8"));
     expect(config.mcp).toBeDefined();
-    expect(config.mcp["opencode-prompts"]).toBeDefined();
-    expect(config.mcp["opencode-prompts"].command).toBe("node");
+    // MCP server is registered as "claude-prompts" (the core MCP server name)
+    expect(config.mcp["claude-prompts"]).toBeDefined();
+    // Now uses npx to run claude-prompts from node_modules
+    expect(config.mcp["claude-prompts"].command).toContain("npx");
   });
 
   it("has plugin entry point", () => {
@@ -33,18 +35,10 @@ describe("OpenCode Plugin Structure", () => {
     expect(existsSync(pkgPath)).toBe(true);
   });
 
-  it("has core submodule", () => {
-    const corePath = join(ROOT, "core");
-    expect(existsSync(corePath)).toBe(true);
-    expect(existsSync(join(corePath, ".git"))).toBe(true);
-  });
-
-  it("has server symlink pointing to core/server", () => {
-    const serverPath = join(ROOT, "server");
-    expect(existsSync(serverPath)).toBe(true);
-
-    const stats = lstatSync(serverPath);
-    expect(stats.isSymbolicLink()).toBe(true);
+  it("has claude-prompts as npm dependency", () => {
+    const pkgPath = join(ROOT, "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    expect(pkg.dependencies?.["claude-prompts"]).toBeDefined();
   });
 });
 
@@ -68,20 +62,37 @@ describe("TypeScript Library Modules", () => {
   });
 });
 
-describe("Core Server Integration", () => {
-  const serverDir = join(ROOT, "core", "server");
+describe("npm Dependency Integration", () => {
+  // Note: These tests require `npm install` to have been run
+  // In CI, this is done in the validate-plugin job
+  const nodeModulesDir = join(ROOT, "node_modules", "claude-prompts");
 
-  it("has server dist bundle", () => {
-    const distPath = join(serverDir, "dist", "index.js");
+  it("has claude-prompts package installed", () => {
+    // This test will pass after npm install
+    // Skip in development if node_modules doesn't exist
+    if (!existsSync(join(ROOT, "node_modules"))) {
+      console.log("Skipping: node_modules not present (run npm install)");
+      return;
+    }
+    expect(existsSync(nodeModulesDir)).toBe(true);
+  });
+
+  it("has server dist bundle in node_modules", () => {
+    if (!existsSync(nodeModulesDir)) {
+      console.log("Skipping: claude-prompts not installed");
+      return;
+    }
+    const distPath = join(nodeModulesDir, "dist", "index.js");
     expect(existsSync(distPath)).toBe(true);
   });
 
-  it("has server package.json", () => {
-    const pkgPath = join(serverDir, "package.json");
-    expect(existsSync(pkgPath)).toBe(true);
-
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-    expect(pkg.name).toBe("claude-prompts");
+  it("has hooks directory in node_modules", () => {
+    if (!existsSync(nodeModulesDir)) {
+      console.log("Skipping: claude-prompts not installed");
+      return;
+    }
+    const hooksPath = join(nodeModulesDir, "hooks");
+    expect(existsSync(hooksPath)).toBe(true);
   });
 });
 
@@ -92,7 +103,12 @@ describe("CI/CD Configuration", () => {
     expect(existsSync(join(workflowsDir, "ci.yml"))).toBe(true);
   });
 
-  it("has update-submodule workflow", () => {
-    expect(existsSync(join(workflowsDir, "update-submodule.yml"))).toBe(true);
+  it("has npm-publish workflow", () => {
+    expect(existsSync(join(workflowsDir, "npm-publish.yml"))).toBe(true);
+  });
+
+  it("does not have update-submodule workflow (deprecated)", () => {
+    // Submodule sync is no longer needed - using npm dependencies instead
+    expect(existsSync(join(workflowsDir, "update-submodule.yml"))).toBe(false);
   });
 });

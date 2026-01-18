@@ -10,7 +10,20 @@ OpenCode plugin for the [claude-prompts](https://github.com/minipuft/claude-prom
 | Forgot to respond to gate review | Gate reminder injection | `GATE_REVIEW: PASS\|FAIL` prompt appears |
 | Verify loop runs forever | Shell verify tracking | Loop terminates after max attempts |
 
-## Quick Start
+## Installation
+
+### Via npm (Recommended)
+
+```bash
+# Install and set up hooks
+npx opencode-prompts install
+
+# Or install globally
+npm install -g opencode-prompts
+opencode-prompts install
+```
+
+### Via git clone
 
 ```bash
 # Clone to OpenCode plugin directory
@@ -23,6 +36,21 @@ git clone --recursive https://github.com/minipuft/opencode-prompts.git
 ```
 
 OpenCode loads plugins automatically. Restart your session to activate.
+
+## Uninstallation
+
+```bash
+# Remove hooks (preserves other hooks in settings.json)
+npx opencode-prompts uninstall
+
+# Complete removal
+npx opencode-prompts uninstall
+npm uninstall opencode-prompts
+
+# Or if git-cloned:
+npx opencode-prompts uninstall
+rm -rf .opencode/plugin/opencode-prompts
+```
 
 ---
 
@@ -162,12 +190,20 @@ The plugin registers the MCP server via `opencode.json`:
 
 ```
 opencode-prompts/
-├── .opencode/plugin/index.ts   # Plugin entry (TypeScript)
-├── src/lib/
-│   ├── cache-manager.ts        # Reads prompts.cache.json
-│   ├── session-state.ts        # State tracking + parsing
-│   └── workspace.ts            # Path resolution
+├── src/
+│   ├── cli/
+│   │   ├── index.ts            # CLI entry point
+│   │   └── commands/
+│   │       ├── install.ts      # Install command
+│   │       └── uninstall.ts    # Uninstall command
+│   └── lib/
+│       ├── cache-manager.ts    # Reads prompts.cache.json
+│       ├── hooks-config.ts     # Shared hooks configuration
+│       ├── session-state.ts    # State tracking + parsing
+│       └── workspace.ts        # Path resolution
+├── .opencode/plugin/index.ts   # OpenCode plugin entry
 ├── core/                       # Submodule → claude-prompts-mcp dist
+├── dist/                       # Built output (npm package)
 └── server -> core/server       # Symlink for cache access
 ```
 
@@ -188,7 +224,23 @@ opencode-prompts/
 ```bash
 npm install          # Install dependencies
 npm run typecheck    # Validate TypeScript
+npm run build        # Build TypeScript to dist/
 npm test             # Run tests
+```
+
+### CLI Development
+
+```bash
+# Test CLI locally
+node dist/src/cli/index.js --help
+node dist/src/cli/index.js install
+node dist/src/cli/index.js uninstall
+```
+
+### Publishing
+
+```bash
+npm run release      # Build, test, and publish to npm
 ```
 
 ### Updating Core

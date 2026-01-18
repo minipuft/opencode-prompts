@@ -1,0 +1,87 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write  # Required for npm provenance
+
+jobs:
+  publish:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          submodules: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Verify tag/version alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag='${{ github.event.release.tag_name }}'
+          sha="$(git rev-parse HEAD)"
+
+          # Parse version from 'vX.Y.Z'
+          if [[ "$tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            version_from_tag="${BASH_REMATCH[1]}"
+          else
+            echo "Unexpected tag format: $tag"
+            exit 1
+          fi
+
+          version_from_pkg="$(node -p "require('./package.json').version")"
+          if [[ "$version_from_pkg" != "$version_from_tag" ]]; then
+            echo "Version mismatch: tag=$version_from_tag package.json=$version_from_pkg"
+            exit 1
+          fi
+
+          # Check changelog entry exists
+          if ! grep -q "## \\[${version_from_tag}\\]" CHANGELOG.md 2>/dev/null; then
+            echo "Missing changelog entry for ${version_from_tag} in CHANGELOG.md"
+            exit 1
+          fi
+
+          # Guardrail: only publish releases whose tag commit is on main
+          git fetch origin main --depth=1
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "Refusing to publish: tag commit is not on main (sha=$sha)"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Preview package contents
+        run: |
+          echo "=== Package contents ==="
+          npm pack --dry-run 2>&1
+
+          echo ""
+          echo "=== Package size check ==="
+          PACKED=$(npm pack --dry-run 2>&1 | grep "total files" || true)
+          echo "$PACKED"
+
+      - name: Publish with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance
