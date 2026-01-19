@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "plugin": ["opencode-prompts"],
   "mcp": {
     "claude-prompts": {
       "type": "local",
