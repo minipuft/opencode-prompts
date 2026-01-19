@@ -41,7 +41,8 @@
     "access": "public"
   },
   "dependencies": {
-    "claude-prompts": "^1.4.0"
+    "claude-prompts": "^1.4.0",
+    "jsonc-parser": "^3.3.1"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",

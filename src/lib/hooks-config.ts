@@ -156,31 +156,29 @@ export function mergeHooksConfig(
 /**
  * Get the hooks directory path for this package.
  *
+ * Hooks are located in the claude-prompts npm package (our dependency).
+ *
  * @param projectDir - Project root directory
  * @param pluginDir - Plugin installation directory (optional, for OpenCode plugin context)
  */
 export function getHooksDir(projectDir: string, pluginDir?: string): string {
+  // Hooks are in claude-prompts package (our dependency)
+  // Check node_modules/claude-prompts/hooks first
+  const claudePromptsHooksDir = join("node_modules", "claude-prompts", "hooks");
+  if (existsSync(join(projectDir, claudePromptsHooksDir))) {
+    return claudePromptsHooksDir;
+  }
+
+  // Legacy: pluginDir context (OpenCode plugin with old structure)
   if (pluginDir) {
-    // OpenCode plugin context: use relative path from project to plugin
-    const hooksDir = join(pluginDir, "core", "hooks");
-    return relative(projectDir, hooksDir);
+    const legacyHooksDir = join(pluginDir, "core", "hooks");
+    if (existsSync(legacyHooksDir)) {
+      return relative(projectDir, legacyHooksDir);
+    }
   }
 
-  // CLI context: detect installation location
-  // Try npm global/local install first (node_modules)
-  const npmHooksDir = join("node_modules", "opencode-prompts", "core", "hooks");
-  if (existsSync(join(projectDir, npmHooksDir))) {
-    return npmHooksDir;
-  }
-
-  // Try .opencode/plugin location
-  const pluginHooksDir = join(".opencode", "plugin", "opencode-prompts", "core", "hooks");
-  if (existsSync(join(projectDir, pluginHooksDir))) {
-    return pluginHooksDir;
-  }
-
-  // Fallback to npm location (will be created on install)
-  return npmHooksDir;
+  // Fallback to claude-prompts location (will exist after npm install)
+  return claudePromptsHooksDir;
 }
 
 /**
