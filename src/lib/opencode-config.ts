@@ -133,21 +133,22 @@ export function writeOpencodeConfig(
 }
 
 /**
- * Check if claude-prompts MCP is already configured.
+ * Check if opencode-prompts MCP is already configured.
  */
 export function hasMcpConfig(config: OpencodeConfig | null): boolean {
   if (!config?.mcp) {
     return false;
   }
-  return "claude-prompts" in config.mcp;
+  // Check for both names for backwards compatibility
+  return "opencode-prompts" in config.mcp || "claude-prompts" in config.mcp;
 }
 
 /**
- * Install MCP configuration for claude-prompts.
+ * Install MCP configuration for opencode-prompts.
  *
  * This function:
  * 1. Detects existing opencode.json/opencode.jsonc
- * 2. Checks if claude-prompts MCP is already configured
+ * 2. Checks if opencode-prompts MCP is already configured
  * 3. Adds MCP config if missing
  * 4. Creates opencode.json if no config exists
  *
@@ -181,7 +182,7 @@ export function installMcpConfig(projectDir: string | undefined): McpConfigResul
 
       // Add MCP config
       existingConfig.mcp = existingConfig.mcp ?? {};
-      existingConfig.mcp["claude-prompts"] = generateMcpConfig();
+      existingConfig.mcp["opencode-prompts"] = generateMcpConfig();
 
       writeOpencodeConfig(projectDir, existingConfig, originalContent);
       console.log("[opencode-prompts] Added MCP configuration to opencode.json");
@@ -197,7 +198,7 @@ export function installMcpConfig(projectDir: string | undefined): McpConfigResul
     const newConfig: OpencodeConfig = {
       $schema: "https://opencode.ai/config.json",
       mcp: {
-        "claude-prompts": generateMcpConfig(),
+        "opencode-prompts": generateMcpConfig(),
       },
     };
 

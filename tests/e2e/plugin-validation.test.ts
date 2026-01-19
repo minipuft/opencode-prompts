@@ -19,10 +19,10 @@ describe("OpenCode Plugin Structure", () => {
 
     const config = JSON.parse(readFileSync(configPath, "utf-8"));
     expect(config.mcp).toBeDefined();
-    // MCP server is registered as "claude-prompts" (the core MCP server name)
-    expect(config.mcp["claude-prompts"]).toBeDefined();
-    // Now uses npx to run claude-prompts from node_modules
-    expect(config.mcp["claude-prompts"].command).toContain("npx");
+    // MCP server is registered as "opencode-prompts" (unified naming)
+    expect(config.mcp["opencode-prompts"]).toBeDefined();
+    // Uses npx to run claude-prompts MCP server from node_modules
+    expect(config.mcp["opencode-prompts"].command).toContain("npx");
   });
 
   it("has plugin entry point", () => {
