@@ -1,159 +1,37 @@
 # opencode-prompts
 
-OpenCode plugin for the [claude-prompts](https://github.com/minipuft/claude-prompts-mcp) MCP server. Tracks chain progress, reminds you about pending gates, and preserves workflow state across session compaction.
+OpenCode plugin for the [claude-prompts](https://github.com/minipuft/claude-prompts-mcp) MCP server. Chain tracking, gate reminders, and state preservation—all working with OpenCode's native plugin API.
 
-## Why This Matters
+[![npm version](https://img.shields.io/npm/v/opencode-prompts.svg?style=flat-square)](https://www.npmjs.com/package/opencode-prompts)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+
+## Why This Plugin
 
 | Problem | Solution | Result |
 |---------|----------|--------|
 | Chain state lost on `/compact` | State preservation hook | Resume from Step 3/5, not Step 1 |
 | Forgot to respond to gate review | Gate reminder injection | `GATE_REVIEW: PASS\|FAIL` prompt appears |
 | Verify loop runs forever | Shell verify tracking | Loop terminates after max attempts |
+| MCP server setup is manual | Bundled claude-prompts server | Works out of the box |
 
-## Installation
-
-### Via npm (Recommended)
+## Quick Start
 
 ```bash
-# Install and set up hooks
-npx opencode-prompts install
-
-# Or install globally
+# Install globally
 npm install -g opencode-prompts
 opencode-prompts install
+
+# Or via npx
+npx opencode-prompts install
 ```
 
-### Via git clone
+Restart OpenCode. You should see chain progress after prompt_engine calls:
 
-```bash
-# Clone to OpenCode plugin directory
-cd ~/.config/opencode/plugin
-git clone --recursive https://github.com/minipuft/opencode-prompts.git
-
-# Or project-local
-mkdir -p .opencode/plugin && cd .opencode/plugin
-git clone --recursive https://github.com/minipuft/opencode-prompts.git
-```
-
-OpenCode loads plugins automatically. Restart your session to activate.
-
-## Uninstallation
-
-```bash
-# Remove hooks (preserves other hooks in settings.json)
-npx opencode-prompts uninstall
-
-# Complete removal
-npx opencode-prompts uninstall
-npm uninstall opencode-prompts
-
-# Or if git-cloned:
-npx opencode-prompts uninstall
-rm -rf .opencode/plugin/opencode-prompts
-```
-
----
-
-## What Works (Always, No Extra Setup)
-
-These features work with the native OpenCode plugin API — no additional dependencies required:
-
-| Hook | Triggers | Effect |
-|------|----------|--------|
-| `tool.execute.after` | After `prompt_engine` call | Injects chain progress + gate reminders |
-| `experimental.session.compacting` | Before `/compact` | Preserves active chain/gate state |
-| `session.deleted` | Session ends | Cleans up state files |
-
-**Example output after a prompt_engine call:**
-
-```
+```text
 [Chain] Step 2/4 - call prompt_engine to continue
 [Gate] code-quality
   Respond: GATE_REVIEW: PASS|FAIL - <reason>
-  Check: Tests pass | No type errors | Coverage >80%
 ```
-
----
-
-## Platform Limitation: No Prompt Syntax Detection
-
-⚠️ **OpenCode lacks a `UserPromptSubmit` hook** (the equivalent of Claude Code's pre-message interception).
-
-### What This Means
-
-On Claude Code and Gemini CLI, typing `>>diagnose` triggers a hook that:
-1. Detects the `>>prompt` syntax
-2. Looks up available arguments
-3. Injects context so the model knows how to call `prompt_engine`
-
-**OpenCode doesn't support this.** The model won't automatically recognize `>>diagnose` as a prompt command.
-
-### Workarounds
-
-**Option 1: Explicit MCP calls** (Recommended)
-
-Instead of `>>diagnose`, tell the model directly:
-
-```
-Use prompt_engine to run the diagnose prompt with scope:"auth" and focus:"security"
-```
-
-**Option 2: System prompt guidance**
-
-Add to your project's `.opencode/AGENTS.md` or system instructions:
-
-```markdown
-## Prompt Engine
-
-This project uses the claude-prompts MCP server. Available prompts:
-- `diagnose` - Analyze issues (args: scope, focus, symptoms)
-- `review` - Code review (args: files, depth)
-
-When I mention ">>promptname", call prompt_engine(command:">>promptname", options:{...})
-```
-
-**Option 3: Query the MCP server**
-
-The model can discover prompts dynamically:
-
-```
-List available prompts from the claude-prompts MCP server, then run diagnose
-```
-
-### Option 4: oh-my-opencode Integration (Full Feature Parity)
-
-[oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) provides Claude Code hook compatibility, including `UserPromptSubmit`.
-
-**Installation:**
-
-```bash
-# Interactive installer (recommended)
-npx oh-my-opencode install
-
-# Or with bun
-bunx oh-my-opencode install
-```
-
-**That's it!** This plugin auto-creates `.claude/settings.json` on first load with the correct hooks.
-
-**What happens automatically:**
-
-- Plugin detects first load and creates `.claude/settings.json` in your project
-- Hooks are configured to route `UserPromptSubmit` through our `prompt-suggest.py`
-- `>>prompt` syntax detection works immediately
-- Existing `.claude/settings.json` files are merged (not overwritten)
-
-**Graceful degradation:** If oh-my-opencode is not installed, the `.claude/settings.json` file is created but ignored. Native plugin features (chain tracking, gate reminders, state preservation) continue to work normally.
-
-**Note:** This uses project-local `.claude/settings.json`, not `~/.claude/`. Hooks stay within the plugin directory.
-
-**Manual override:** If you need custom hook configuration, edit `.claude/settings.json` or use `.claude/settings.json.example` as a reference.
-
-### Feature Request
-
-If you want native `>>prompt` detection in OpenCode (without oh-my-opencode), request a `tui.prompt.submit` or `message.before` hook at [OpenCode GitHub](https://github.com/sst/opencode/issues).
-
----
 
 ## Features
 
@@ -162,20 +40,48 @@ If you want native `>>prompt` detection in OpenCode (without oh-my-opencode), re
 - **State Preservation** — Chain/gate state survives session compaction
 - **Shell Verify Tracking** — Monitors verification loop attempts
 - **Auto-cleanup** — Clears state when sessions end
+- **Bundled MCP Server** — Includes claude-prompts server, no separate install needed
 
----
+## Hooks
+
+| OpenCode Hook | Purpose |
+|---------------|---------|
+| `tool.execute.after` | Injects chain progress + gate reminders |
+| `experimental.session.compacting` | Preserves active chain/gate state |
+| `session.deleted` | Cleans up state files |
+
+## Full Prompt Syntax (Optional)
+
+OpenCode lacks a `UserPromptSubmit` hook, so `>>prompt` syntax detection requires [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode):
+
+```bash
+npx oh-my-opencode install
+```
+
+This plugin auto-configures hooks when oh-my-opencode is detected. Without it, use explicit MCP calls:
+
+```text
+Use prompt_engine to run the diagnose prompt with scope:"auth"
+```
+
+| Feature | Native OpenCode | + oh-my-opencode |
+|---------|-----------------|------------------|
+| Chain tracking | Yes | Yes |
+| Gate reminders | Yes | Yes |
+| State preservation | Yes | Yes |
+| `>>prompt` detection | No | Yes |
+| Argument suggestions | No | Yes |
 
 ## Configuration
 
-The plugin registers the MCP server via `opencode.json`:
+The plugin auto-registers the MCP server. Manual configuration in `opencode.json`:
 
 ```json
 {
-  "$schema": "https://opencode.ai/config.json",
   "mcp": {
     "claude-prompts": {
       "type": "local",
-      "command": ["node", "server/dist/index.js", "--transport=stdio"],
+      "command": ["npx", "claude-prompts", "--transport=stdio"],
       "environment": {
         "MCP_WORKSPACE": "."
       }
@@ -184,99 +90,39 @@ The plugin registers the MCP server via `opencode.json`:
 }
 ```
 
----
+## Uninstallation
 
-## Architecture
-
+```bash
+npx opencode-prompts uninstall
+npm uninstall -g opencode-prompts
 ```
-opencode-prompts/
-├── src/
-│   ├── cli/
-│   │   ├── index.ts            # CLI entry point
-│   │   └── commands/
-│   │       ├── install.ts      # Install command
-│   │       └── uninstall.ts    # Uninstall command
-│   └── lib/
-│       ├── cache-manager.ts    # Reads prompts.cache.json
-│       ├── hooks-config.ts     # Shared hooks configuration
-│       ├── session-state.ts    # State tracking + parsing
-│       └── workspace.ts        # Path resolution
-├── .opencode/plugin/index.ts   # OpenCode plugin entry
-├── core/                       # Submodule → claude-prompts-mcp dist
-├── dist/                       # Built output (npm package)
-└── server -> core/server       # Symlink for cache access
-```
-
-### Hook Mapping
-
-| OpenCode Hook | Claude Code Equivalent | Purpose | oh-my-opencode |
-|---------------|------------------------|---------|-----------------|
-| `tool.execute.after` | `PostToolUse` | Chain/gate tracking | ✅ |
-| `experimental.session.compacting` | `PreCompact` | State preservation | ✅ |
-| `session.created` | `SessionStart` | Initialization | ✅ |
-| `session.deleted` | `Stop` | Cleanup | ✅ |
-| ❌ Not available | `UserPromptSubmit` | Prompt syntax detection | ✅ Fills gap |
-
----
 
 ## Development
 
 ```bash
-npm install          # Install dependencies
-npm run typecheck    # Validate TypeScript
-npm run build        # Build TypeScript to dist/
-npm test             # Run tests
-```
-
-### CLI Development
-
-```bash
-# Test CLI locally
-node dist/src/cli/index.js --help
-node dist/src/cli/index.js install
-node dist/src/cli/index.js uninstall
-```
-
-### Publishing
-
-```bash
-npm run release      # Build, test, and publish to npm
+git clone https://github.com/minipuft/opencode-prompts
+cd opencode-prompts
+npm install
+npm run build
+npm test
 ```
 
 ### Updating Core
 
-The `core/` submodule tracks claude-prompts-mcp's `dist` branch:
+The `core/` submodule tracks claude-prompts-mcp:
 
 ```bash
 git submodule update --remote --merge
 ```
 
----
+## Related Projects
 
-## Comparison: OpenCode vs Claude Code vs Gemini
-
-**Baseline (native plugin):** Chain tracking, gate reminders, and state preservation work without any additional setup.
-
-**Enhanced (+ oh-my-opencode):** Adds `>>prompt` syntax detection and argument suggestions.
-
-| Feature | Claude Code | Gemini CLI | OpenCode | OpenCode + oh-my-opencode |
-|---------|-------------|------------|----------|---------------------------|
-| Chain tracking | ✅ | ✅ | ✅ | ✅ |
-| Gate reminders | ✅ | ✅ | ✅ | ✅ |
-| State preservation | ✅ | ✅ | ✅ | ✅ |
-| `>>prompt` detection | ✅ | ✅ | ❌ | ✅ |
-| Argument suggestions | ✅ | ✅ | ❌ | ✅ |
-
----
-
-## Related
-
-- [claude-prompts-mcp](https://github.com/minipuft/claude-prompts-mcp) — Core MCP server
-- [gemini-prompts](https://github.com/minipuft/gemini-prompts) — Gemini CLI extension (full hook support)
-- [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) — Claude Code compatibility layer for OpenCode
-- [OpenCode Plugins Docs](https://opencode.ai/docs/plugins/)
-
----
+| Project | Description |
+|---------|-------------|
+| [claude-prompts-mcp](https://github.com/minipuft/claude-prompts-mcp) | Core MCP server with chains, gates, frameworks |
+| [gemini-prompts](https://github.com/minipuft/gemini-prompts) | Gemini CLI extension (full hook support) |
+| [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) | Claude Code compatibility layer for OpenCode |
+| [minipuft-plugins](https://github.com/minipuft/minipuft-plugins) | Claude Code plugin marketplace |
 
 ## License
 
