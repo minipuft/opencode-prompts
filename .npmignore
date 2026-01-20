@@ -1,0 +1,28 @@
+# Test artifacts - explicitly exclude all test patterns
+dist/tests
+dist/tests/**
+**/tests/**
+*.test.js
+*.test.d.ts
+*.test.js.map
+*.test.d.ts.map
+**/*.test.js
+**/*.test.d.ts
+**/*.test.js.map
+**/*.test.d.ts.map
+
+# Development files
+.github/
+.claude/
+tests/
+*.md
+!README.md
+
+# TypeScript source (compiled versions in dist/)
+src/
+.opencode/
+
+# Config files
+tsconfig.json
+jest.config.js
+.gitignore

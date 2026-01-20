@@ -12,9 +12,9 @@
     "./cli": "./dist/src/cli/index.js"
   },
   "files": [
-    "dist",
-    ".opencode",
-    "src",
+    "dist/.opencode",
+    "dist/src",
+    "dist/package.json",
     "README.md"
   ],
   "scripts": {
