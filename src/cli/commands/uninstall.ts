@@ -1,16 +1,25 @@
 /**
  * Uninstall command for opencode-prompts CLI.
  *
- * Removes Claude hooks from .claude/settings.json while preserving other hooks.
- * Creates a backup before modification for safety.
+ * Removes:
+ * 1. Global hooks from ~/.claude/hooks/hooks.json
+ * 2. Hook scripts from ~/.claude/hooks/claude-prompts/
+ * 3. Legacy hooks from project .claude/settings.json (cleanup)
  */
 
 import { existsSync } from "node:fs";
 import { resolve, join } from "node:path";
-import { uninstallHooks, readClaudeSettings } from "../../lib/hooks-config.js";
+import {
+  uninstallHooks,
+  uninstallGlobalHooks,
+  getGlobalPaths,
+  hasGlobalHooks,
+  readClaudeSettings,
+} from "../../lib/hooks-config.js";
+import { detectExistingInstallation } from "../../lib/detect-installation.js";
 
 /**
- * Uninstall hooks from the current project.
+ * Uninstall hooks from the system.
  */
 export async function uninstall(args: string[]): Promise<void> {
   // Check for help flag
@@ -19,79 +28,120 @@ export async function uninstall(args: string[]): Promise<void> {
     return;
   }
 
-  // Determine project directory
+  // Parse flags
+  const cleanupLegacy = args.includes("--cleanup-legacy");
+
+  // Determine project directory (for legacy cleanup)
   const projectDir = resolve(process.cwd());
-  const settingsPath = join(projectDir, ".claude", "settings.json");
 
-  console.log("Uninstalling opencode-prompts hooks...\n");
+  console.log("Uninstalling opencode-prompts...\n");
 
-  // Check if settings file exists
-  if (!existsSync(settingsPath)) {
-    console.log("\u2713 No .claude/settings.json found, nothing to uninstall");
-    return;
-  }
+  // Step 1: Show current installation status
+  console.log("Checking installation status...");
+  const status = detectExistingInstallation();
 
-  // Show current state
-  const settings = readClaudeSettings(projectDir);
-  if (settings?.hooks) {
-    const hookEvents = Object.keys(settings.hooks);
-    console.log(`Found ${hookEvents.length} hook event type(s) in settings`);
-  }
-
-  // Uninstall hooks
-  const result = uninstallHooks(projectDir);
-
-  if (result.success) {
-    console.log(`\n\u2713 ${result.message}`);
-
-    if (result.backupPath) {
-      console.log(`\nBackup created at: ${result.backupPath}`);
+  if (status.details.length > 0) {
+    for (const detail of status.details) {
+      console.log(`  • ${detail}`);
     }
-
-    if (result.removed && result.removed > 0) {
-      console.log("\nRemoved hooks:");
-      console.log("  - UserPromptSubmit: prompt-suggest.py");
-      console.log("  - PostToolUse: post-prompt-engine.py");
-      console.log("  - PreCompact: pre-compact.py");
-      console.log("\nYour other hooks (if any) have been preserved.");
-    }
-
-    // Verify removal
-    const afterSettings = readClaudeSettings(projectDir);
-    if (afterSettings?.hooks && Object.keys(afterSettings.hooks).length > 0) {
-      const remaining = Object.keys(afterSettings.hooks);
-      console.log(`\nRemaining hook events: ${remaining.join(", ")}`);
-    } else {
-      console.log("\nNo hooks remaining in .claude/settings.json");
-    }
-
-    console.log("\nTo fully remove opencode-prompts:");
-    console.log("  npm uninstall opencode-prompts");
-    console.log("  # Or if git-cloned:");
-    console.log("  rm -rf .opencode/plugin/opencode-prompts");
+    console.log();
   } else {
-    console.error(`\u2717 ${result.message}`);
+    console.log("  No installation detected.\n");
+  }
+
+  let hasErrors = false;
+
+  // Step 2: Uninstall global hooks
+  console.log("Removing global hooks...");
+
+  if (!hasGlobalHooks() && !status.hooksDirExists) {
+    console.log("✓ No global hooks found, nothing to remove.\n");
+  } else {
+    const result = uninstallGlobalHooks();
+
+    if (result.success) {
+      const { ourHooksDir, hooksJsonPath } = getGlobalPaths();
+      console.log(`✓ Removed hooks from ${hooksJsonPath}`);
+      console.log(`✓ Removed hook scripts from ${ourHooksDir}`);
+    } else {
+      console.error(`✗ ${result.message}`);
+      hasErrors = true;
+    }
+    console.log();
+  }
+
+  // Step 3: Clean up legacy project-level hooks (if requested or found)
+  const legacySettingsPath = join(projectDir, ".claude", "settings.json");
+  const hasLegacyHooks = existsSync(legacySettingsPath);
+
+  if (hasLegacyHooks && (cleanupLegacy || args.length === 0)) {
+    console.log("Cleaning up legacy project hooks...");
+
+    const legacySettings = readClaudeSettings(projectDir);
+    if (legacySettings?.hooks) {
+      const legacyResult = uninstallHooks(projectDir);
+
+      if (legacyResult.success) {
+        if (legacyResult.removed && legacyResult.removed > 0) {
+          console.log(`✓ Removed ${legacyResult.removed} legacy hook(s) from .claude/settings.json`);
+          if (legacyResult.backupPath) {
+            console.log(`  Backup: ${legacyResult.backupPath}`);
+          }
+        } else {
+          console.log("✓ No legacy hooks found in .claude/settings.json");
+        }
+      } else {
+        console.log(`  Note: ${legacyResult.message}`);
+      }
+    } else {
+      console.log("✓ No hooks in project .claude/settings.json");
+    }
+    console.log();
+  }
+
+  // Summary
+  if (hasErrors) {
+    console.log("Uninstallation completed with errors.");
     process.exit(1);
   }
+
+  console.log("✓ Uninstallation complete!\n");
+
+  console.log("What was removed:");
+  const { ourHooksDir, hooksJsonPath } = getGlobalPaths();
+  console.log(`  • Hook scripts from: ${ourHooksDir}`);
+  console.log(`  • Hook registration from: ${hooksJsonPath}`);
+  if (hasLegacyHooks) {
+    console.log("  • Legacy hooks from: .claude/settings.json");
+  }
+
+  console.log("\nTo fully remove the package:");
+  console.log("  npm uninstall opencode-prompts");
 }
 
 function showUninstallHelp(): void {
+  const { ourHooksDir, hooksJsonPath } = getGlobalPaths();
+
   console.log(`
-opencode-prompts uninstall - Remove Claude hooks
+opencode-prompts uninstall - Remove hooks
 
 Usage: opencode-prompts uninstall [options]
 
 Options:
-  --help, -h    Show this help message
+  --help, -h        Show this help message
+  --cleanup-legacy  Also clean up legacy project .claude/settings.json hooks
 
 Description:
-  Removes opencode-prompts hooks from .claude/settings.json.
+  Removes opencode-prompts from your system:
 
-  Safety features:
-  - Creates backup at .claude/settings.json.backup before modification
-  - Only removes hooks matching opencode-prompts patterns
-  - Preserves all other hooks in the file
-  - Cleans up empty hook event arrays
+  1. Global Hooks:
+     - Removes entries from ${hooksJsonPath}
+     - Deletes hook scripts from ${ourHooksDir}
+
+  2. Legacy Cleanup (with --cleanup-legacy):
+     - Removes hooks from project .claude/settings.json
+     - Creates backup before modification
+     - Preserves other hooks
 
   Hooks removed:
   - UserPromptSubmit: prompt-suggest.py
@@ -99,7 +149,8 @@ Description:
   - PreCompact: pre-compact.py
 
 Examples:
-  opencode-prompts uninstall
-  npx opencode-prompts uninstall
+  opencode-prompts uninstall                 # Remove global hooks
+  npx opencode-prompts uninstall             # Via npx
+  opencode-prompts uninstall --cleanup-legacy  # Also clean project hooks
 `);
 }
