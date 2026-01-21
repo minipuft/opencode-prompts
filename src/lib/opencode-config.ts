@@ -1,13 +1,22 @@
 /**
- * OpenCode configuration manager for MCP auto-registration.
+ * OpenCode configuration manager for plugin registration and MCP auto-registration.
  *
- * Automatically configures the claude-prompts MCP server in opencode.json
- * when the plugin loads, simplifying the installation process.
+ * Supports both:
+ * - Global plugin registration in ~/.config/opencode/opencode.json(c)
+ * - Project-level MCP configuration in ./opencode.json(c)
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { homedir } from "node:os";
 import * as jsonc from "jsonc-parser";
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const GLOBAL_CONFIG_DIR = join(homedir(), ".config", "opencode");
+const PLUGIN_NAME = "opencode-prompts";
 
 /**
  * MCP server configuration structure.
@@ -218,6 +227,194 @@ export function installMcpConfig(projectDir: string | undefined): McpConfigResul
     return {
       success: false,
       message: `Could not setup MCP config: ${message}`,
+    };
+  }
+}
+
+// =============================================================================
+// Global Plugin Registration (~/.config/opencode/)
+// =============================================================================
+
+/**
+ * Result of a plugin registration operation.
+ */
+export interface PluginConfigResult {
+  success: boolean;
+  message: string;
+  created?: boolean;
+  modified?: boolean;
+  skipped?: boolean;
+  configPath?: string;
+}
+
+/**
+ * Get path to global OpenCode config file.
+ * Checks for opencode.jsonc first, then opencode.json.
+ */
+export function getGlobalConfigPath(): string | null {
+  const jsoncPath = join(GLOBAL_CONFIG_DIR, "opencode.jsonc");
+  if (existsSync(jsoncPath)) {
+    return jsoncPath;
+  }
+
+  const jsonPath = join(GLOBAL_CONFIG_DIR, "opencode.json");
+  if (existsSync(jsonPath)) {
+    return jsonPath;
+  }
+
+  return null;
+}
+
+/**
+ * Read global OpenCode configuration.
+ */
+export function readGlobalConfig(): OpencodeConfig | null {
+  const configPath = getGlobalConfigPath();
+  if (!configPath) {
+    return null;
+  }
+
+  try {
+    const content = readFileSync(configPath, "utf-8");
+    const errors: jsonc.ParseError[] = [];
+    const config = jsonc.parse(content, errors) as OpencodeConfig;
+
+    if (errors.length > 0) {
+      return null;
+    }
+
+    return config;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write global OpenCode configuration.
+ */
+export function writeGlobalConfig(config: OpencodeConfig, configPath: string): void {
+  // Ensure directory exists
+  mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true });
+
+  const content = JSON.stringify(config, null, 2);
+  writeFileSync(configPath, content + "\n");
+}
+
+/**
+ * Check if opencode-prompts is registered in the plugin array.
+ */
+export function hasPluginRegistration(config: OpencodeConfig | null): boolean {
+  if (!config?.plugin || !Array.isArray(config.plugin)) {
+    return false;
+  }
+  return config.plugin.some((p) => p === PLUGIN_NAME || p.startsWith(`${PLUGIN_NAME}@`));
+}
+
+/**
+ * Install plugin registration in global config.
+ *
+ * Adds "opencode-prompts" to the plugin array in ~/.config/opencode/opencode.json(c).
+ */
+export function installPluginRegistration(): PluginConfigResult {
+  try {
+    const existingPath = getGlobalConfigPath();
+    const configPath = existingPath ?? join(GLOBAL_CONFIG_DIR, "opencode.json");
+    const existingConfig = readGlobalConfig();
+
+    // Already registered
+    if (existingConfig && hasPluginRegistration(existingConfig)) {
+      return {
+        success: true,
+        message: "Plugin already registered in global config",
+        skipped: true,
+        configPath,
+      };
+    }
+
+    // Add to existing config
+    if (existingConfig) {
+      existingConfig.plugin = existingConfig.plugin ?? [];
+      existingConfig.plugin.push(PLUGIN_NAME);
+      writeGlobalConfig(existingConfig, configPath);
+
+      return {
+        success: true,
+        message: `Added ${PLUGIN_NAME} to plugin array in ${configPath}`,
+        modified: true,
+        configPath,
+      };
+    }
+
+    // Create new config
+    const newConfig: OpencodeConfig = {
+      $schema: "https://opencode.ai/config.json",
+      plugin: [PLUGIN_NAME],
+    };
+
+    writeGlobalConfig(newConfig, configPath);
+
+    return {
+      success: true,
+      message: `Created ${configPath} with plugin registration`,
+      created: true,
+      configPath,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `Failed to register plugin: ${message}`,
+    };
+  }
+}
+
+/**
+ * Remove plugin registration from global config.
+ */
+export function removePluginRegistration(): PluginConfigResult {
+  try {
+    const configPath = getGlobalConfigPath();
+    if (!configPath) {
+      return {
+        success: true,
+        message: "No global config found, nothing to remove",
+        skipped: true,
+      };
+    }
+
+    const config = readGlobalConfig();
+    if (!config || !hasPluginRegistration(config)) {
+      return {
+        success: true,
+        message: "Plugin not registered in global config",
+        skipped: true,
+        configPath,
+      };
+    }
+
+    // Remove from plugin array
+    config.plugin = config.plugin?.filter(
+      (p) => p !== PLUGIN_NAME && !p.startsWith(`${PLUGIN_NAME}@`)
+    );
+
+    // Clean up empty array
+    if (config.plugin?.length === 0) {
+      delete config.plugin;
+    }
+
+    writeGlobalConfig(config, configPath);
+
+    return {
+      success: true,
+      message: `Removed ${PLUGIN_NAME} from plugin array`,
+      modified: true,
+      configPath,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `Failed to remove plugin registration: ${message}`,
     };
   }
 }

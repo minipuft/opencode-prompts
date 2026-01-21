@@ -4,7 +4,8 @@
  * Removes:
  * 1. Global hooks from ~/.claude/hooks/hooks.json
  * 2. Hook scripts from ~/.claude/hooks/claude-prompts/
- * 3. Legacy hooks from project .claude/settings.json (cleanup)
+ * 3. Plugin registration from ~/.config/opencode/opencode.json(c)
+ * 4. Legacy hooks from project .claude/settings.json (cleanup)
  */
 
 import { existsSync } from "node:fs";
@@ -16,6 +17,11 @@ import {
   hasGlobalHooks,
   readClaudeSettings,
 } from "../../lib/hooks-config.js";
+import {
+  removePluginRegistration,
+  hasPluginRegistration,
+  readGlobalConfig,
+} from "../../lib/opencode-config.js";
 import { detectExistingInstallation } from "../../lib/detect-installation.js";
 
 /**
@@ -70,7 +76,29 @@ export async function uninstall(args: string[]): Promise<void> {
     console.log();
   }
 
-  // Step 3: Clean up legacy project-level hooks (if requested or found)
+  // Step 3: Remove plugin registration from global config
+  console.log("Removing plugin registration...");
+  const globalConfig = readGlobalConfig();
+
+  if (!hasPluginRegistration(globalConfig)) {
+    console.log("✓ No plugin registration found in global config.\n");
+  } else {
+    const pluginResult = removePluginRegistration();
+
+    if (pluginResult.success) {
+      if (pluginResult.modified) {
+        console.log(`✓ Removed opencode-prompts from plugin array in ${pluginResult.configPath}`);
+      } else {
+        console.log(`✓ ${pluginResult.message}`);
+      }
+    } else {
+      console.error(`✗ ${pluginResult.message}`);
+      hasErrors = true;
+    }
+    console.log();
+  }
+
+  // Step 4: Clean up legacy project-level hooks (if requested or found)
   const legacySettingsPath = join(projectDir, ".claude", "settings.json");
   const hasLegacyHooks = existsSync(legacySettingsPath);
 
@@ -111,6 +139,7 @@ export async function uninstall(args: string[]): Promise<void> {
   const { ourHooksDir, hooksJsonPath } = getGlobalPaths();
   console.log(`  • Hook scripts from: ${ourHooksDir}`);
   console.log(`  • Hook registration from: ${hooksJsonPath}`);
+  console.log("  • Plugin registration from: ~/.config/opencode/opencode.json(c)");
   if (hasLegacyHooks) {
     console.log("  • Legacy hooks from: .claude/settings.json");
   }
@@ -123,7 +152,7 @@ function showUninstallHelp(): void {
   const { ourHooksDir, hooksJsonPath } = getGlobalPaths();
 
   console.log(`
-opencode-prompts uninstall - Remove hooks
+opencode-prompts uninstall - Remove hooks and plugin registration
 
 Usage: opencode-prompts uninstall [options]
 
@@ -138,7 +167,11 @@ Description:
      - Removes entries from ${hooksJsonPath}
      - Deletes hook scripts from ${ourHooksDir}
 
-  2. Legacy Cleanup (with --cleanup-legacy):
+  2. Plugin Registration:
+     - Removes "opencode-prompts" from plugin array
+     - Config: ~/.config/opencode/opencode.json(c)
+
+  3. Legacy Cleanup (with --cleanup-legacy):
      - Removes hooks from project .claude/settings.json
      - Creates backup before modification
      - Preserves other hooks
@@ -149,8 +182,8 @@ Description:
   - PreCompact: pre-compact.py
 
 Examples:
-  opencode-prompts uninstall                 # Remove global hooks
-  npx opencode-prompts uninstall             # Via npx
-  opencode-prompts uninstall --cleanup-legacy  # Also clean project hooks
+  opencode-prompts uninstall                   # Full uninstall
+  npx opencode-prompts uninstall               # Via npx
+  opencode-prompts uninstall --cleanup-legacy  # Also clean legacy project hooks
 `);
 }

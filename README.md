@@ -21,8 +21,8 @@ OpenCode plugin for the [claude-prompts](https://github.com/minipuft/claude-prom
 npm install -g opencode-prompts
 opencode-prompts install
 
-# Or via npx
-npx opencode-prompts install
+# Or via npx (non-interactive)
+npx opencode-prompts install -y
 ```
 
 Restart OpenCode. You should see chain progress after prompt_engine calls:
@@ -31,6 +31,72 @@ Restart OpenCode. You should see chain progress after prompt_engine calls:
 [Chain] Step 2/4 - call prompt_engine to continue
 [Gate] code-quality
   Respond: GATE_REVIEW: PASS|FAIL - <reason>
+```
+
+## CLI Reference
+
+### `install`
+
+Sets up hooks and registers the plugin globally.
+
+```bash
+opencode-prompts install [options]
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--yes`, `-y` | Skip prompts, auto-confirm all questions |
+| `--force` | Reinstall hooks even if already installed |
+| `--skip-hooks` | Only register plugin, skip hook installation |
+| `--help`, `-h` | Show help message |
+
+**What it configures:**
+
+| Component | Location | Description |
+|-----------|----------|-------------|
+| Hook scripts | `~/.claude/hooks/claude-prompts/` | Python hooks for chain tracking, gate reminders, state preservation |
+| Hook registration | `~/.claude/hooks/hooks.json` | Registers hooks with Claude Code |
+| Plugin registration | `~/.config/opencode/opencode.json` | Adds `"opencode-prompts"` to global plugin array |
+
+**Examples:**
+
+```bash
+opencode-prompts install              # Interactive install
+opencode-prompts install -y           # Non-interactive (CI/scripts)
+opencode-prompts install --force      # Reinstall hooks
+opencode-prompts install --skip-hooks # Plugin registration only
+```
+
+### `uninstall`
+
+Removes hooks and plugin registration.
+
+```bash
+opencode-prompts uninstall [options]
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--cleanup-legacy` | Also remove hooks from project `.claude/settings.json` |
+| `--help`, `-h` | Show help message |
+
+**What it removes:**
+
+| Component | Location |
+|-----------|----------|
+| Hook scripts | `~/.claude/hooks/claude-prompts/` |
+| Hook registration | `~/.claude/hooks/hooks.json` |
+| Plugin registration | `~/.config/opencode/opencode.json` |
+
+**Examples:**
+
+```bash
+opencode-prompts uninstall                   # Full uninstall
+opencode-prompts uninstall --cleanup-legacy  # Also clean project hooks
 ```
 
 ## Features
@@ -74,7 +140,15 @@ Use prompt_engine to run the diagnose prompt with scope:"auth"
 
 ## Configuration
 
-The plugin auto-registers the MCP server. Manual configuration in `opencode.json`:
+The installer registers the plugin globally in `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "plugin": ["opencode-prompts"]
+}
+```
+
+For project-level MCP configuration (optional), add to your project's `opencode.json`:
 
 ```json
 {
@@ -90,12 +164,14 @@ The plugin auto-registers the MCP server. Manual configuration in `opencode.json
 }
 ```
 
-## Uninstallation
+### Configuration Locations
 
-```bash
-npx opencode-prompts uninstall
-npm uninstall -g opencode-prompts
-```
+| File | Scope | Purpose |
+|------|-------|---------|
+| `~/.config/opencode/opencode.json` | Global | Plugin registration |
+| `~/.claude/hooks/hooks.json` | Global | Hook registration |
+| `~/.claude/hooks/claude-prompts/` | Global | Hook scripts |
+| `./opencode.json` | Project | MCP server config (optional) |
 
 ## Development
 
