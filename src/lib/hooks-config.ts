@@ -718,3 +718,251 @@ export function uninstallGlobalHooks(): HookOperationResult {
     removed: totalRemoved,
   };
 }
+
+// =============================================================================
+// Project-Level Hooks (./.claude/hooks/)
+// =============================================================================
+
+/**
+ * Get project-level paths for hooks.
+ */
+export function getProjectPaths(projectDir: string) {
+  const claudeDir = join(projectDir, ".claude");
+  const hooksDir = join(claudeDir, "hooks");
+  const ourHooksDir = join(hooksDir, "claude-prompts");
+  const hooksJsonPath = join(hooksDir, "hooks.json");
+
+  return { claudeDir, hooksDir, ourHooksDir, hooksJsonPath };
+}
+
+/**
+ * Copy hooks to project location (./.claude/hooks/claude-prompts/).
+ */
+export function copyHooksToProject(projectDir: string): HookOperationResult {
+  const source = findHooksSource(projectDir);
+  if (!source) {
+    return {
+      success: false,
+      message: "Could not find hooks source in node_modules/claude-prompts/hooks",
+    };
+  }
+
+  const { hooksDir, ourHooksDir } = getProjectPaths(projectDir);
+
+  try {
+    mkdirSync(hooksDir, { recursive: true });
+    cpSync(source, ourHooksDir, { recursive: true });
+
+    return {
+      success: true,
+      message: `Copied hooks to ${ourHooksDir}`,
+      created: true,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `Failed to copy hooks: ${error}`,
+    };
+  }
+}
+
+/**
+ * Generate project-level hooks configuration.
+ */
+export function generateProjectHooksConfig(projectDir: string): GlobalHooksJson {
+  const { ourHooksDir } = getProjectPaths(projectDir);
+
+  return {
+    hooks: {
+      UserPromptSubmit: [
+        {
+          matcher: "*",
+          hooks: [
+            {
+              type: "command",
+              command: `python3 ${ourHooksDir}/prompt-suggest.py`,
+              name: "prompt-suggest",
+              timeout: 5,
+            },
+          ],
+        },
+      ],
+      PostToolUse: [
+        {
+          matcher: "prompt_engine",
+          hooks: [
+            {
+              type: "command",
+              command: `python3 ${ourHooksDir}/post-prompt-engine.py`,
+              name: "chain-tracker",
+              timeout: 5,
+            },
+          ],
+        },
+      ],
+      PreCompact: [
+        {
+          matcher: "*",
+          hooks: [
+            {
+              type: "command",
+              command: `python3 ${ourHooksDir}/pre-compact.py`,
+              name: "pre-compact",
+              timeout: 5,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Read project-level hooks.json.
+ */
+export function readProjectHooksJson(projectDir: string): GlobalHooksJson | null {
+  const { hooksJsonPath } = getProjectPaths(projectDir);
+
+  if (!existsSync(hooksJsonPath)) {
+    return null;
+  }
+
+  try {
+    const content = readFileSync(hooksJsonPath, "utf-8");
+    return JSON.parse(content) as GlobalHooksJson;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write project-level hooks.json.
+ */
+export function writeProjectHooksJson(projectDir: string, config: GlobalHooksJson): void {
+  const { hooksDir, hooksJsonPath } = getProjectPaths(projectDir);
+
+  mkdirSync(hooksDir, { recursive: true });
+  writeFileSync(hooksJsonPath, JSON.stringify(config, null, 2) + "\n");
+}
+
+/**
+ * Check if our hooks are in project hooks.json.
+ */
+export function hasProjectHooks(projectDir: string): boolean {
+  const existing = readProjectHooksJson(projectDir);
+  if (!existing?.hooks) return false;
+
+  const configStr = JSON.stringify(existing);
+  return HOOK_PATTERNS.some((pattern) => configStr.includes(pattern));
+}
+
+/**
+ * Merge our hooks into project hooks.json.
+ */
+export function mergeIntoProjectHooksJson(projectDir: string): HookOperationResult {
+  const ourHooks = generateProjectHooksConfig(projectDir);
+  const existing = readProjectHooksJson(projectDir);
+
+  if (existing && hasProjectHooks(projectDir)) {
+    return {
+      success: true,
+      message: "Hooks already registered in project hooks.json",
+    };
+  }
+
+  if (existing) {
+    for (const [event, hooks] of Object.entries(ourHooks.hooks)) {
+      const existingHooks = existing.hooks[event] ?? [];
+      existing.hooks[event] = [...existingHooks, ...(hooks ?? [])];
+    }
+
+    writeProjectHooksJson(projectDir, existing);
+    return {
+      success: true,
+      message: "Merged hooks into existing project hooks.json",
+      merged: true,
+    };
+  }
+
+  writeProjectHooksJson(projectDir, ourHooks);
+  return {
+    success: true,
+    message: "Created project hooks.json with our hooks",
+    created: true,
+  };
+}
+
+/**
+ * Install hooks to project directory.
+ *
+ * 1. Copy hooks to ./.claude/hooks/claude-prompts/
+ * 2. Merge into ./.claude/hooks/hooks.json
+ */
+export function installProjectHooks(projectDir: string): HookOperationResult {
+  const copyResult = copyHooksToProject(projectDir);
+  if (!copyResult.success) {
+    return copyResult;
+  }
+
+  const mergeResult = mergeIntoProjectHooksJson(projectDir);
+  if (!mergeResult.success) {
+    return mergeResult;
+  }
+
+  return {
+    success: true,
+    message: `${copyResult.message}; ${mergeResult.message}`,
+    created: copyResult.created || mergeResult.created,
+    merged: mergeResult.merged,
+  };
+}
+
+/**
+ * Uninstall hooks from project directory.
+ */
+export function uninstallProjectHooks(projectDir: string): HookOperationResult {
+  const { ourHooksDir, hooksJsonPath } = getProjectPaths(projectDir);
+  let removedCount = 0;
+
+  // Remove from hooks.json
+  const existing = readProjectHooksJson(projectDir);
+  if (existing && hasProjectHooks(projectDir)) {
+    const hookEvents = Object.keys(existing.hooks) as (keyof GlobalHooksJson["hooks"])[];
+
+    for (const event of hookEvents) {
+      const eventHooks = existing.hooks[event];
+      if (!eventHooks) continue;
+
+      const originalCount = eventHooks.length;
+      const filtered = eventHooks.filter((config) => {
+        const hasOurs = config.hooks?.some((hook) => isOurHook(hook.command));
+        return !hasOurs;
+      });
+
+      removedCount += originalCount - filtered.length;
+
+      if (filtered.length > 0) {
+        existing.hooks[event] = filtered;
+      } else {
+        delete existing.hooks[event];
+      }
+    }
+
+    writeProjectHooksJson(projectDir, existing);
+  }
+
+  // Remove hooks directory
+  if (existsSync(ourHooksDir)) {
+    try {
+      rmSync(ourHooksDir, { recursive: true, force: true });
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  return {
+    success: true,
+    message: `Removed ${removedCount} hook(s) from project`,
+    removed: removedCount,
+  };
+}

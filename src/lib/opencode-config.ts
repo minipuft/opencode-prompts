@@ -418,3 +418,250 @@ export function removePluginRegistration(): PluginConfigResult {
     };
   }
 }
+
+// =============================================================================
+// Project-Level Plugin Registration (./opencode.json)
+// =============================================================================
+
+/**
+ * Install plugin registration in project config.
+ *
+ * Adds "opencode-prompts" to the plugin array in ./opencode.json(c).
+ */
+export function installPluginRegistrationToProject(projectDir: string): PluginConfigResult {
+  try {
+    const configPath = getConfigPath(projectDir) ?? join(projectDir, "opencode.json");
+    const existingConfig = readOpencodeConfig(projectDir);
+
+    // Already registered
+    if (existingConfig && hasPluginRegistration(existingConfig)) {
+      return {
+        success: true,
+        message: "Plugin already registered in project config",
+        skipped: true,
+        configPath,
+      };
+    }
+
+    // Add to existing config
+    if (existingConfig) {
+      existingConfig.plugin = existingConfig.plugin ?? [];
+      existingConfig.plugin.push(PLUGIN_NAME);
+      writeOpencodeConfig(projectDir, existingConfig);
+
+      return {
+        success: true,
+        message: `Added ${PLUGIN_NAME} to plugin array in ${configPath}`,
+        modified: true,
+        configPath,
+      };
+    }
+
+    // Create new config
+    const newConfig: OpencodeConfig = {
+      $schema: "https://opencode.ai/config.json",
+      plugin: [PLUGIN_NAME],
+    };
+
+    writeFileSync(configPath, JSON.stringify(newConfig, null, 2) + "\n");
+
+    return {
+      success: true,
+      message: `Created ${configPath} with plugin registration`,
+      created: true,
+      configPath,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `Failed to register plugin in project: ${message}`,
+    };
+  }
+}
+
+/**
+ * Remove plugin registration from project config.
+ */
+export function removePluginRegistrationFromProject(projectDir: string): PluginConfigResult {
+  try {
+    const configPath = getConfigPath(projectDir);
+    if (!configPath) {
+      return {
+        success: true,
+        message: "No project config found, nothing to remove",
+        skipped: true,
+      };
+    }
+
+    const config = readOpencodeConfig(projectDir);
+    if (!config || !hasPluginRegistration(config)) {
+      return {
+        success: true,
+        message: "Plugin not registered in project config",
+        skipped: true,
+        configPath,
+      };
+    }
+
+    config.plugin = config.plugin?.filter(
+      (p) => p !== PLUGIN_NAME && !p.startsWith(`${PLUGIN_NAME}@`)
+    );
+
+    if (config.plugin?.length === 0) {
+      delete config.plugin;
+    }
+
+    writeOpencodeConfig(projectDir, config);
+
+    return {
+      success: true,
+      message: `Removed ${PLUGIN_NAME} from project plugin array`,
+      modified: true,
+      configPath,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `Failed to remove plugin from project: ${message}`,
+    };
+  }
+}
+
+// =============================================================================
+// MCP Configuration with Custom Workspace
+// =============================================================================
+
+/**
+ * Generate MCP config with custom workspace path.
+ */
+function generateMcpConfigWithWorkspace(mcpWorkspace: string): McpServerConfig {
+  return {
+    type: "local",
+    command: ["npx", "claude-prompts", "--transport=stdio"],
+    environment: {
+      MCP_WORKSPACE: mcpWorkspace,
+    },
+  };
+}
+
+/**
+ * Install MCP configuration with custom workspace path.
+ *
+ * @param projectDir - Project directory for config file
+ * @param mcpWorkspace - Path to set as MCP_WORKSPACE
+ */
+export function installMcpConfigWithWorkspace(
+  projectDir: string,
+  mcpWorkspace: string
+): McpConfigResult {
+  try {
+    const existingConfig = readOpencodeConfig(projectDir);
+    const configPath = getConfigPath(projectDir);
+
+    // Config exists with MCP already configured
+    if (existingConfig && hasMcpConfig(existingConfig)) {
+      // Update the workspace path
+      if (existingConfig.mcp?.["opencode-prompts"]) {
+        existingConfig.mcp["opencode-prompts"].environment = {
+          ...existingConfig.mcp["opencode-prompts"].environment,
+          MCP_WORKSPACE: mcpWorkspace,
+        };
+        writeOpencodeConfig(projectDir, existingConfig);
+        return {
+          success: true,
+          message: "Updated MCP_WORKSPACE in existing config",
+          modified: true,
+        };
+      }
+    }
+
+    // Config exists but no MCP
+    if (existingConfig && configPath) {
+      existingConfig.mcp = existingConfig.mcp ?? {};
+      existingConfig.mcp["opencode-prompts"] = generateMcpConfigWithWorkspace(mcpWorkspace);
+
+      writeOpencodeConfig(projectDir, existingConfig);
+
+      return {
+        success: true,
+        message: "Added MCP configuration to existing opencode.json",
+        modified: true,
+      };
+    }
+
+    // No config exists - create minimal one
+    const newConfig: OpencodeConfig = {
+      $schema: "https://opencode.ai/config.json",
+      mcp: {
+        "opencode-prompts": generateMcpConfigWithWorkspace(mcpWorkspace),
+      },
+    };
+
+    const newConfigPath = join(projectDir, "opencode.json");
+    writeFileSync(newConfigPath, JSON.stringify(newConfig, null, 2) + "\n");
+
+    return {
+      success: true,
+      message: "Created opencode.json with MCP configuration",
+      created: true,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `Could not setup MCP config: ${message}`,
+    };
+  }
+}
+
+/**
+ * Remove MCP configuration from project.
+ */
+export function removeMcpConfig(projectDir: string): McpConfigResult {
+  try {
+    const existingConfig = readOpencodeConfig(projectDir);
+    const configPath = getConfigPath(projectDir);
+
+    if (!existingConfig || !configPath) {
+      return {
+        success: true,
+        message: "No project config found",
+        skipped: true,
+      };
+    }
+
+    if (!hasMcpConfig(existingConfig)) {
+      return {
+        success: true,
+        message: "No MCP configuration found",
+        skipped: true,
+      };
+    }
+
+    // Remove MCP entries
+    if (existingConfig.mcp) {
+      delete existingConfig.mcp["opencode-prompts"];
+      delete existingConfig.mcp["claude-prompts"];
+
+      if (Object.keys(existingConfig.mcp).length === 0) {
+        delete existingConfig.mcp;
+      }
+    }
+
+    writeOpencodeConfig(projectDir, existingConfig);
+
+    return {
+      success: true,
+      message: "Removed MCP configuration",
+      modified: true,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `Could not remove MCP config: ${message}`,
+    };
+  }
+}
