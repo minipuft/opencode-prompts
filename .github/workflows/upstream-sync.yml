@@ -1,0 +1,74 @@
+name: Upstream Sync
+
+on:
+  repository_dispatch:
+    types: [upstream-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to update to (optional, will use latest if empty)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-dependency:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Update claude-prompts dependency
+        id: update
+        run: |
+          echo "Updating claude-prompts..."
+          bun update claude-prompts
+
+          # Extract new version from lockfile
+          VERSION=$(bun pm ls claude-prompts 2>/dev/null | grep claude-prompts | head -1 | sed 's/.*@//')
+          if [ -z "$VERSION" ]; then
+            VERSION=$(node -p "require('./node_modules/claude-prompts/package.json').version")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Updated to version: $VERSION"
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet bun.lockb; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected in bun.lockb"
+          fi
+
+      - name: Create Pull Request
+        if: steps.changes.outputs.has_changes == 'true'
+        id: pr
+        uses: peter-evans/create-pull-request@v7
+        with:
+          title: "chore(deps): update claude-prompts to ${{ steps.update.outputs.version }}"
+          body: |
+            Automated dependency update triggered by upstream release.
+
+            ## Changes
+            - Updated `claude-prompts` to version `${{ steps.update.outputs.version }}`
+
+            ## Triggered by
+            ${{ github.event_name == 'repository_dispatch' && format('Upstream release: {0}', github.event.client_payload.version) || 'Manual workflow dispatch' }}
+          branch: deps/claude-prompts-${{ steps.update.outputs.version }}
+          commit-message: "chore(deps): update claude-prompts to ${{ steps.update.outputs.version }}"
+          labels: dependencies,automerge
+
+      - name: Enable auto-merge
+        if: steps.pr.outputs.pull-request-number
+        run: gh pr merge --auto --squash "${{ steps.pr.outputs.pull-request-number }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
