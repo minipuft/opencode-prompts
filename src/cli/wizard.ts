@@ -2,6 +2,7 @@
  * Interactive wizard components for CLI.
  *
  * Provides reusable prompts for multi-step installation flows.
+ * Uses single-keypress selection for fast UX.
  */
 
 import * as readline from "node:readline/promises";
@@ -51,68 +52,100 @@ function createRL(): readline.Interface {
 }
 
 /**
+ * Read a single keypress (no Enter required).
+ */
+function readSingleKey(): Promise<string> {
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    const wasRaw = stdin.isRaw;
+
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+
+    const onData = (key: string) => {
+      stdin.setRawMode(wasRaw);
+      stdin.pause();
+      stdin.removeListener("data", onData);
+
+      // Handle Ctrl+C
+      if (key === "\x03") {
+        process.exit(0);
+      }
+
+      resolve(key.toLowerCase());
+    };
+
+    stdin.once("data", onData);
+  });
+}
+
+/**
  * Run a single wizard step and return the selected value.
+ * Uses single-keypress selection for choices.
  */
 export async function runWizardStep(
   step: WizardStep,
   stepNumber?: number,
   totalSteps?: number
 ): Promise<string> {
-  const rl = createRL();
+  // Header
+  console.log();
+  if (stepNumber && totalSteps) {
+    console.log(fmt.dim(`Step ${stepNumber}/${totalSteps}`));
+  }
+  console.log(fmt.bold(step.title));
+  console.log(fmt.dim(step.description));
+  console.log();
 
-  try {
-    // Header
-    console.log();
-    if (stepNumber && totalSteps) {
-      console.log(fmt.dim(`Step ${stepNumber}/${totalSteps}`));
-    }
-    console.log(fmt.bold(step.title));
-    console.log(fmt.dim(step.description));
-    console.log();
+  // Choices
+  for (const choice of step.choices) {
+    const recommended = choice.recommended ? fmt.green(" (recommended)") : "";
+    console.log(`  [${fmt.cyan(choice.key)}] ${choice.label}${recommended}`);
+  }
 
-    // Choices
-    for (const choice of step.choices) {
-      const recommended = choice.recommended ? fmt.green(" (recommended)") : "";
-      console.log(`  [${fmt.cyan(choice.key)}] ${choice.label}${recommended}`);
-    }
+  if (step.allowCustom) {
+    console.log(`  [${fmt.cyan("c")}] Custom path...`);
+  }
 
-    if (step.allowCustom) {
-      console.log(`  [${fmt.cyan("c")}] Custom path...`);
-    }
+  console.log();
+  process.stdout.write(`${fmt.dim("Select")}: `);
 
-    console.log();
+  // Single-keypress selection
+  while (true) {
+    const key = await readSingleKey();
 
-    // Get input
-    while (true) {
-      const answer = await rl.question(`${fmt.dim("Select")}: `);
-      const normalized = answer.toLowerCase().trim();
-
-      // Check for custom path
-      if (step.allowCustom && normalized === "c") {
+    // Check for custom path
+    if (step.allowCustom && key === "c") {
+      console.log(key); // Echo the key
+      const rl = createRL();
+      try {
         const customPath = await rl.question(
           `${step.customPrompt ?? "Enter path"}: `
         );
         return `custom:${customPath.trim()}`;
+      } finally {
+        rl.close();
       }
-
-      // Check for valid choice
-      const choice = step.choices.find(
-        (c) => c.key.toLowerCase() === normalized
-      );
-      if (choice) {
-        return choice.value;
-      }
-
-      // Default to first choice on empty input
-      if (normalized === "" && step.choices.length > 0) {
-        const defaultChoice = step.choices.find((c) => c.recommended) ?? step.choices[0];
-        return defaultChoice.value;
-      }
-
-      console.log(fmt.yellow("Invalid choice. Please try again."));
     }
-  } finally {
-    rl.close();
+
+    // Check for valid choice
+    const choice = step.choices.find(
+      (c) => c.key.toLowerCase() === key
+    );
+    if (choice) {
+      console.log(key); // Echo the key
+      return choice.value;
+    }
+
+    // Default to recommended on Enter
+    if (key === "\r" || key === "\n") {
+      const defaultChoice = step.choices.find((c) => c.recommended) ?? step.choices[0];
+      console.log(defaultChoice.key); // Echo the default
+      return defaultChoice.value;
+    }
+
+    // Invalid key - no feedback, just wait for valid input
   }
 }
 
@@ -148,67 +181,77 @@ export async function runWizard(
 
 /**
  * Show a summary and ask for confirmation.
+ * Uses single-keypress selection.
  */
 export async function confirmWizard(
   summary: { label: string; value: string }[]
 ): Promise<"confirm" | "change" | "quit"> {
-  const rl = createRL();
+  console.log();
+  console.log(fmt.bold("Ready to install:"));
+  console.log();
 
-  try {
-    console.log();
-    console.log(fmt.bold("Ready to install:"));
-    console.log();
+  for (const item of summary) {
+    console.log(`  ${fmt.dim("•")} ${item.label}: ${fmt.cyan(item.value)}`);
+  }
 
-    for (const item of summary) {
-      console.log(`  ${fmt.dim("•")} ${item.label}: ${fmt.cyan(item.value)}`);
-    }
+  console.log();
+  console.log(
+    `  [${fmt.green("Enter")}] Confirm  |  [${fmt.yellow("c")}] Change  |  [${fmt.dim("q")}] Quit`
+  );
+  console.log();
+  process.stdout.write(`${fmt.dim("Action")}: `);
 
-    console.log();
-    console.log(
-      `  [${fmt.green("Enter")}] Confirm  |  [${fmt.yellow("c")}] Change  |  [${fmt.dim("q")}] Quit`
-    );
-    console.log();
+  while (true) {
+    const key = await readSingleKey();
 
-    const answer = await rl.question(`${fmt.dim("Action")}: `);
-    const normalized = answer.toLowerCase().trim();
-
-    if (normalized === "q" || normalized === "quit") {
+    if (key === "q") {
+      console.log(key);
       return "quit";
     }
-    if (normalized === "c" || normalized === "change") {
+    if (key === "c") {
+      console.log(key);
       return "change";
     }
-    return "confirm";
-  } finally {
-    rl.close();
+    if (key === "\r" || key === "\n") {
+      console.log(); // New line for Enter
+      return "confirm";
+    }
+    // Invalid key - wait for valid input
   }
 }
 
 /**
  * Ask a simple yes/no question.
+ * Uses single-keypress selection.
  */
 export async function askYesNo(
   question: string,
   defaultYes = true
 ): Promise<boolean> {
-  const rl = createRL();
+  const prompt = defaultYes ? "[Y/n]" : "[y/N]";
+  process.stdout.write(`${question} ${prompt}: `);
 
-  try {
-    const prompt = defaultYes ? "[Y/n]" : "[y/N]";
-    const answer = await rl.question(`${question} ${prompt}: `);
-    const normalized = answer.toLowerCase().trim();
+  while (true) {
+    const key = await readSingleKey();
 
-    if (normalized === "") {
+    if (key === "y") {
+      console.log(key);
+      return true;
+    }
+    if (key === "n") {
+      console.log(key);
+      return false;
+    }
+    if (key === "\r" || key === "\n") {
+      console.log(defaultYes ? "y" : "n");
       return defaultYes;
     }
-    return normalized === "y" || normalized === "yes";
-  } finally {
-    rl.close();
+    // Invalid key - wait for valid input
   }
 }
 
 /**
- * Ask for a text input.
+ * Ask for a text input (requires Enter).
  */
 export async function askText(
   question: string,

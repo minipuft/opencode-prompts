@@ -33,7 +33,7 @@ import { detectExistingInstallation } from "../../lib/detect-installation.js";
 interface InstallConfig {
   hooks: "global" | "project" | "skip";
   plugin: "global" | "project" | "skip";
-  mcp: "global-hooks" | "node-modules" | "custom" | "skip";
+  mcp: "global-hooks" | "custom" | "skip";
   mcpPath?: string;
 }
 
@@ -182,11 +182,6 @@ async function runInstallWizard(projectDir: string): Promise<InstallConfig> {
       },
       {
         key: "2",
-        label: "Set MCP_WORKSPACE to node_modules/claude-prompts",
-        value: "node-modules",
-      },
-      {
-        key: "3",
         label: "Skip MCP config",
         value: "skip",
       },
@@ -251,8 +246,6 @@ function buildSummary(
       ? projectPaths.ourHooksDir
       : globalPaths.ourHooksDir;
     summary.push({ label: "MCP_WORKSPACE", value: hooksDir });
-  } else if (config.mcp === "node-modules") {
-    summary.push({ label: "MCP_WORKSPACE", value: "./node_modules/claude-prompts" });
   } else if (config.mcp === "custom" && config.mcpPath) {
     summary.push({ label: "MCP_WORKSPACE", value: config.mcpPath });
   } else {
@@ -327,8 +320,6 @@ async function executeInstall(projectDir: string, config: InstallConfig): Promis
       mcpWorkspace = config.hooks === "project"
         ? projectPaths.ourHooksDir
         : globalPaths.ourHooksDir;
-    } else if (config.mcp === "node-modules") {
-      mcpWorkspace = "./node_modules/claude-prompts";
     } else if (config.mcp === "custom" && config.mcpPath) {
       mcpWorkspace = config.mcpPath;
     } else {
