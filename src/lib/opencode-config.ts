@@ -4,12 +4,47 @@
  * Supports both:
  * - Global plugin registration in ~/.config/opencode/opencode.json(c)
  * - Project-level MCP configuration in ./opencode.json(c)
+ *
+ * Uses surgical JSON/JSONC modification to preserve comments and formatting.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import * as jsonc from "jsonc-parser";
+
+// =============================================================================
+// Surgical JSON/JSONC Modification
+// =============================================================================
+
+/**
+ * Default formatting options for JSON modifications.
+ */
+const FORMATTING_OPTIONS: jsonc.FormattingOptions = {
+  tabSize: 2,
+  insertSpaces: true,
+  eol: "\n",
+};
+
+/**
+ * Surgically modify a JSON/JSONC file at a specific path.
+ * Preserves comments and formatting.
+ *
+ * @param originalText - Original file content
+ * @param path - JSON path to modify (e.g., ["plugin"] or ["mcp", "opencode-prompts"])
+ * @param value - New value to set at path
+ * @returns Modified text
+ */
+function surgicalModify(
+  originalText: string,
+  path: jsonc.JSONPath,
+  value: unknown
+): string {
+  const edits = jsonc.modify(originalText, path, value, {
+    formattingOptions: FORMATTING_OPTIONS,
+  });
+  return jsonc.applyEdits(originalText, edits);
+}
 
 // =============================================================================
 // Constants
@@ -114,34 +149,6 @@ export function readOpencodeConfig(projectDir: string): OpencodeConfig | null {
 }
 
 /**
- * Write OpenCode configuration, preserving comments in JSONC files.
- */
-export function writeOpencodeConfig(
-  projectDir: string,
-  config: OpencodeConfig,
-  originalContent?: string
-): void {
-  const format = detectConfigFormat(projectDir);
-  const configPath = join(
-    projectDir,
-    format === "jsonc" ? "opencode.jsonc" : "opencode.json"
-  );
-
-  // If we have original content with comments, use jsonc modify operations
-  if (originalContent && format === "jsonc") {
-    // For JSONC, we need to preserve comments by using edit operations
-    // This is a simplified approach - for complex cases, consider using
-    // jsonc.modify() for surgical edits
-    const newContent = JSON.stringify(config, null, 2);
-    writeFileSync(configPath, newContent + "\n");
-  } else {
-    // For regular JSON or new files
-    const content = JSON.stringify(config, null, 2);
-    writeFileSync(configPath, content + "\n");
-  }
-}
-
-/**
  * Check if opencode-prompts MCP is already configured.
  */
 export function hasMcpConfig(config: OpencodeConfig | null): boolean {
@@ -173,7 +180,7 @@ export function installMcpConfig(projectDir: string | undefined): McpConfigResul
 
   try {
     const existingConfig = readOpencodeConfig(projectDir);
-    const configPath = getConfigPath(projectDir);
+    const existingPath = getConfigPath(projectDir);
 
     // Case 1: Config exists with MCP already configured
     if (existingConfig && hasMcpConfig(existingConfig)) {
@@ -185,15 +192,10 @@ export function installMcpConfig(projectDir: string | undefined): McpConfigResul
       };
     }
 
-    // Case 2: Config exists but no MCP
-    if (existingConfig && configPath) {
-      const originalContent = readFileSync(configPath, "utf-8");
-
-      // Add MCP config
-      existingConfig.mcp = existingConfig.mcp ?? {};
-      existingConfig.mcp["opencode-prompts"] = generateMcpConfig();
-
-      writeOpencodeConfig(projectDir, existingConfig, originalContent);
+    // Case 2: Config exists but no MCP - surgical modification
+    if (existingConfig && existingPath) {
+      const mcpConfig = generateMcpConfig();
+      surgicalModifyProjectConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
       console.log("[opencode-prompts] Added MCP configuration to opencode.json");
 
       return {
@@ -290,7 +292,9 @@ export function readGlobalConfig(): OpencodeConfig | null {
 }
 
 /**
- * Write global OpenCode configuration.
+ * Write global OpenCode configuration surgically.
+ * For new files, creates with JSON.stringify.
+ * For existing files, use surgicalModifyGlobalConfig instead.
  */
 export function writeGlobalConfig(config: OpencodeConfig, configPath: string): void {
   // Ensure directory exists
@@ -298,6 +302,21 @@ export function writeGlobalConfig(config: OpencodeConfig, configPath: string): v
 
   const content = JSON.stringify(config, null, 2);
   writeFileSync(configPath, content + "\n");
+}
+
+/**
+ * Surgically modify global config at a specific path.
+ * Preserves comments and formatting.
+ */
+function surgicalModifyGlobalConfig(
+  configPath: string,
+  path: jsonc.JSONPath,
+  value: unknown
+): void {
+  mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true });
+  const text = readFileSync(configPath, "utf-8");
+  const newText = surgicalModify(text, path, value);
+  writeFileSync(configPath, newText);
 }
 
 /**
@@ -314,6 +333,7 @@ export function hasPluginRegistration(config: OpencodeConfig | null): boolean {
  * Install plugin registration in global config.
  *
  * Adds "opencode-prompts" to the plugin array in ~/.config/opencode/opencode.json(c).
+ * Uses surgical modification to preserve comments and formatting.
  */
 export function installPluginRegistration(): PluginConfigResult {
   try {
@@ -331,11 +351,10 @@ export function installPluginRegistration(): PluginConfigResult {
       };
     }
 
-    // Add to existing config
-    if (existingConfig) {
-      existingConfig.plugin = existingConfig.plugin ?? [];
-      existingConfig.plugin.push(PLUGIN_NAME);
-      writeGlobalConfig(existingConfig, configPath);
+    // Add to existing config (surgical modification)
+    if (existingConfig && existingPath) {
+      const newPluginArray = [...(existingConfig.plugin ?? []), PLUGIN_NAME];
+      surgicalModifyGlobalConfig(existingPath, ["plugin"], newPluginArray);
 
       return {
         success: true,
@@ -370,6 +389,7 @@ export function installPluginRegistration(): PluginConfigResult {
 
 /**
  * Remove plugin registration from global config.
+ * Uses surgical modification to preserve comments and formatting.
  */
 export function removePluginRegistration(): PluginConfigResult {
   try {
@@ -392,17 +412,14 @@ export function removePluginRegistration(): PluginConfigResult {
       };
     }
 
-    // Remove from plugin array
-    config.plugin = config.plugin?.filter(
+    // Remove from plugin array (surgical modification)
+    const filteredPlugins = config.plugin?.filter(
       (p) => p !== PLUGIN_NAME && !p.startsWith(`${PLUGIN_NAME}@`)
-    );
+    ) ?? [];
 
-    // Clean up empty array
-    if (config.plugin?.length === 0) {
-      delete config.plugin;
-    }
-
-    writeGlobalConfig(config, configPath);
+    // Set to filtered array or undefined if empty
+    const newValue = filteredPlugins.length > 0 ? filteredPlugins : undefined;
+    surgicalModifyGlobalConfig(configPath, ["plugin"], newValue);
 
     return {
       success: true,
@@ -424,13 +441,29 @@ export function removePluginRegistration(): PluginConfigResult {
 // =============================================================================
 
 /**
+ * Surgically modify project config at a specific path.
+ * Preserves comments and formatting.
+ */
+function surgicalModifyProjectConfig(
+  configPath: string,
+  path: jsonc.JSONPath,
+  value: unknown
+): void {
+  const text = readFileSync(configPath, "utf-8");
+  const newText = surgicalModify(text, path, value);
+  writeFileSync(configPath, newText);
+}
+
+/**
  * Install plugin registration in project config.
  *
  * Adds "opencode-prompts" to the plugin array in ./opencode.json(c).
+ * Uses surgical modification to preserve comments and formatting.
  */
 export function installPluginRegistrationToProject(projectDir: string): PluginConfigResult {
   try {
-    const configPath = getConfigPath(projectDir) ?? join(projectDir, "opencode.json");
+    const existingPath = getConfigPath(projectDir);
+    const configPath = existingPath ?? join(projectDir, "opencode.json");
     const existingConfig = readOpencodeConfig(projectDir);
 
     // Already registered
@@ -443,11 +476,10 @@ export function installPluginRegistrationToProject(projectDir: string): PluginCo
       };
     }
 
-    // Add to existing config
-    if (existingConfig) {
-      existingConfig.plugin = existingConfig.plugin ?? [];
-      existingConfig.plugin.push(PLUGIN_NAME);
-      writeOpencodeConfig(projectDir, existingConfig);
+    // Add to existing config (surgical modification)
+    if (existingConfig && existingPath) {
+      const newPluginArray = [...(existingConfig.plugin ?? []), PLUGIN_NAME];
+      surgicalModifyProjectConfig(existingPath, ["plugin"], newPluginArray);
 
       return {
         success: true,
@@ -482,6 +514,7 @@ export function installPluginRegistrationToProject(projectDir: string): PluginCo
 
 /**
  * Remove plugin registration from project config.
+ * Uses surgical modification to preserve comments and formatting.
  */
 export function removePluginRegistrationFromProject(projectDir: string): PluginConfigResult {
   try {
@@ -504,15 +537,14 @@ export function removePluginRegistrationFromProject(projectDir: string): PluginC
       };
     }
 
-    config.plugin = config.plugin?.filter(
+    // Remove from plugin array (surgical modification)
+    const filteredPlugins = config.plugin?.filter(
       (p) => p !== PLUGIN_NAME && !p.startsWith(`${PLUGIN_NAME}@`)
-    );
+    ) ?? [];
 
-    if (config.plugin?.length === 0) {
-      delete config.plugin;
-    }
-
-    writeOpencodeConfig(projectDir, config);
+    // Set to filtered array or undefined if empty
+    const newValue = filteredPlugins.length > 0 ? filteredPlugins : undefined;
+    surgicalModifyProjectConfig(configPath, ["plugin"], newValue);
 
     return {
       success: true,
@@ -548,6 +580,7 @@ function generateMcpConfigWithWorkspace(mcpWorkspace: string): McpServerConfig {
 
 /**
  * Install MCP configuration with custom workspace path.
+ * Uses surgical modification to preserve comments and formatting.
  *
  * @param projectDir - Project directory for config file
  * @param mcpWorkspace - Path to set as MCP_WORKSPACE
@@ -558,31 +591,24 @@ export function installMcpConfigWithWorkspace(
 ): McpConfigResult {
   try {
     const existingConfig = readOpencodeConfig(projectDir);
-    const configPath = getConfigPath(projectDir);
+    const existingPath = getConfigPath(projectDir);
 
-    // Config exists with MCP already configured
-    if (existingConfig && hasMcpConfig(existingConfig)) {
-      // Update the workspace path
-      if (existingConfig.mcp?.["opencode-prompts"]) {
-        existingConfig.mcp["opencode-prompts"].environment = {
-          ...existingConfig.mcp["opencode-prompts"].environment,
-          MCP_WORKSPACE: mcpWorkspace,
-        };
-        writeOpencodeConfig(projectDir, existingConfig);
-        return {
-          success: true,
-          message: "Updated MCP_WORKSPACE in existing config",
-          modified: true,
-        };
-      }
+    // Config exists with MCP already configured - update workspace path
+    if (existingConfig && existingPath && hasMcpConfig(existingConfig)) {
+      const mcpConfig = generateMcpConfigWithWorkspace(mcpWorkspace);
+      surgicalModifyProjectConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
+
+      return {
+        success: true,
+        message: "Updated MCP_WORKSPACE in existing config",
+        modified: true,
+      };
     }
 
-    // Config exists but no MCP
-    if (existingConfig && configPath) {
-      existingConfig.mcp = existingConfig.mcp ?? {};
-      existingConfig.mcp["opencode-prompts"] = generateMcpConfigWithWorkspace(mcpWorkspace);
-
-      writeOpencodeConfig(projectDir, existingConfig);
+    // Config exists but no MCP - add MCP entry
+    if (existingConfig && existingPath) {
+      const mcpConfig = generateMcpConfigWithWorkspace(mcpWorkspace);
+      surgicalModifyProjectConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
 
       return {
         success: true,
@@ -618,6 +644,7 @@ export function installMcpConfigWithWorkspace(
 
 /**
  * Remove MCP configuration from project.
+ * Uses surgical modification to preserve comments and formatting.
  */
 export function removeMcpConfig(projectDir: string): McpConfigResult {
   try {
@@ -640,17 +667,21 @@ export function removeMcpConfig(projectDir: string): McpConfigResult {
       };
     }
 
-    // Remove MCP entries
-    if (existingConfig.mcp) {
-      delete existingConfig.mcp["opencode-prompts"];
-      delete existingConfig.mcp["claude-prompts"];
+    // Remove MCP entries surgically
+    // First remove opencode-prompts
+    surgicalModifyProjectConfig(configPath, ["mcp", "opencode-prompts"], undefined);
 
-      if (Object.keys(existingConfig.mcp).length === 0) {
-        delete existingConfig.mcp;
-      }
+    // Re-read to check for claude-prompts (legacy name)
+    const updatedConfig = readOpencodeConfig(projectDir);
+    if (updatedConfig?.mcp?.["claude-prompts"]) {
+      surgicalModifyProjectConfig(configPath, ["mcp", "claude-prompts"], undefined);
     }
 
-    writeOpencodeConfig(projectDir, existingConfig);
+    // Check if mcp is now empty and remove it
+    const finalConfig = readOpencodeConfig(projectDir);
+    if (finalConfig?.mcp && Object.keys(finalConfig.mcp).length === 0) {
+      surgicalModifyProjectConfig(configPath, ["mcp"], undefined);
+    }
 
     return {
       success: true,
