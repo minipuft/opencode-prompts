@@ -23,8 +23,10 @@ import {
 import {
   removePluginRegistration,
   removePluginRegistrationFromProject,
-  removeMcpConfig,
+  removeMcpConfigFromGlobal,
+  removeMcpConfigFromProject,
   hasPluginRegistration,
+  hasMcpConfig,
   readGlobalConfig,
   readOpencodeConfig,
 } from "../../lib/opencode-config.js";
@@ -54,6 +56,8 @@ export async function uninstall(args: string[]): Promise<void> {
   const projectConfig = readOpencodeConfig(projectDir);
   const hasGlobalPlugin = hasPluginRegistration(globalConfig);
   const hasProjectPlugin = hasPluginRegistration(projectConfig);
+  const hasGlobalMcp = hasMcpConfig(globalConfig);
+  const hasProjectMcp = hasMcpConfig(projectConfig);
   const legacySettingsPath = join(projectDir, ".claude", "settings.json");
   const hasLegacy = existsSync(legacySettingsPath);
 
@@ -63,10 +67,11 @@ export async function uninstall(args: string[]): Promise<void> {
   if (hasProject) console.log(`  • Project hooks: ${projectPaths.ourHooksDir}`);
   if (hasGlobalPlugin) console.log("  • Global plugin registration");
   if (hasProjectPlugin) console.log("  • Project plugin registration");
-  if (projectConfig?.mcp?.["opencode-prompts"]) console.log("  • MCP configuration");
+  if (hasGlobalMcp) console.log("  • Global MCP configuration");
+  if (hasProjectMcp) console.log("  • Project MCP configuration");
   if (hasLegacy) console.log("  • Legacy hooks in .claude/settings.json");
 
-  if (!hasGlobal && !hasProject && !hasGlobalPlugin && !hasProjectPlugin && !hasLegacy) {
+  if (!hasGlobal && !hasProject && !hasGlobalPlugin && !hasProjectPlugin && !hasGlobalMcp && !hasProjectMcp && !hasLegacy) {
     console.log("  (nothing found)\n");
     console.log("No opencode-prompts installation detected.\n");
     return;
@@ -128,10 +133,23 @@ export async function uninstall(args: string[]): Promise<void> {
     console.log();
   }
 
-  // Remove MCP configuration
-  if (projectConfig?.mcp?.["opencode-prompts"]) {
-    console.log("Removing MCP configuration...");
-    const result = removeMcpConfig(projectDir);
+  // Remove global MCP configuration
+  if (hasGlobalMcp) {
+    console.log("Removing global MCP configuration...");
+    const result = removeMcpConfigFromGlobal();
+    if (result.success) {
+      console.log("✓ Removed MCP configuration from ~/.config/opencode/opencode.json");
+    } else {
+      console.log(`✗ ${result.message}`);
+      hasErrors = true;
+    }
+    console.log();
+  }
+
+  // Remove project MCP configuration
+  if (hasProjectMcp) {
+    console.log("Removing project MCP configuration...");
+    const result = removeMcpConfigFromProject(projectDir);
     if (result.success) {
       console.log("✓ Removed MCP configuration from ./opencode.json");
     } else {

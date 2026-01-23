@@ -579,13 +579,74 @@ function generateMcpConfigWithWorkspace(mcpWorkspace: string): McpServerConfig {
 }
 
 /**
- * Install MCP configuration with custom workspace path.
+ * Install MCP configuration to global config.
  * Uses surgical modification to preserve comments and formatting.
  *
- * @param projectDir - Project directory for config file
  * @param mcpWorkspace - Path to set as MCP_WORKSPACE
  */
-export function installMcpConfigWithWorkspace(
+export function installMcpConfigToGlobal(mcpWorkspace: string): McpConfigResult {
+  try {
+    const existingConfig = readGlobalConfig();
+    const existingPath = getGlobalConfigPath();
+    const configPath = existingPath ?? join(GLOBAL_CONFIG_DIR, "opencode.json");
+
+    // Config exists with MCP already configured - update workspace path
+    if (existingConfig && existingPath && hasMcpConfig(existingConfig)) {
+      const mcpConfig = generateMcpConfigWithWorkspace(mcpWorkspace);
+      surgicalModifyGlobalConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
+
+      return {
+        success: true,
+        message: "Updated MCP_WORKSPACE in global config",
+        modified: true,
+      };
+    }
+
+    // Config exists but no MCP - add MCP entry
+    if (existingConfig && existingPath) {
+      const mcpConfig = generateMcpConfigWithWorkspace(mcpWorkspace);
+      surgicalModifyGlobalConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
+
+      return {
+        success: true,
+        message: "Added MCP configuration to global opencode.json",
+        modified: true,
+      };
+    }
+
+    // No config exists - create minimal one
+    const newConfig: OpencodeConfig = {
+      $schema: "https://opencode.ai/config.json",
+      mcp: {
+        "opencode-prompts": generateMcpConfigWithWorkspace(mcpWorkspace),
+      },
+    };
+
+    mkdirSync(GLOBAL_CONFIG_DIR, { recursive: true });
+    writeFileSync(configPath, JSON.stringify(newConfig, null, 2) + "\n");
+
+    return {
+      success: true,
+      message: "Created global opencode.json with MCP configuration",
+      created: true,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `Could not setup global MCP config: ${message}`,
+    };
+  }
+}
+
+/**
+ * Install MCP configuration to project config.
+ * Uses surgical modification to preserve comments and formatting.
+ *
+ * @param projectDir - Project directory (cwd) for config file
+ * @param mcpWorkspace - Path to set as MCP_WORKSPACE
+ */
+export function installMcpConfigToProject(
   projectDir: string,
   mcpWorkspace: string
 ): McpConfigResult {
@@ -646,7 +707,7 @@ export function installMcpConfigWithWorkspace(
  * Remove MCP configuration from project.
  * Uses surgical modification to preserve comments and formatting.
  */
-export function removeMcpConfig(projectDir: string): McpConfigResult {
+export function removeMcpConfigFromProject(projectDir: string): McpConfigResult {
   try {
     const existingConfig = readOpencodeConfig(projectDir);
     const configPath = getConfigPath(projectDir);
@@ -685,14 +746,69 @@ export function removeMcpConfig(projectDir: string): McpConfigResult {
 
     return {
       success: true,
-      message: "Removed MCP configuration",
+      message: "Removed MCP configuration from project",
       modified: true,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
       success: false,
-      message: `Could not remove MCP config: ${message}`,
+      message: `Could not remove project MCP config: ${message}`,
+    };
+  }
+}
+
+/**
+ * Remove MCP configuration from global config.
+ * Uses surgical modification to preserve comments and formatting.
+ */
+export function removeMcpConfigFromGlobal(): McpConfigResult {
+  try {
+    const existingConfig = readGlobalConfig();
+    const configPath = getGlobalConfigPath();
+
+    if (!existingConfig || !configPath) {
+      return {
+        success: true,
+        message: "No global config found",
+        skipped: true,
+      };
+    }
+
+    if (!hasMcpConfig(existingConfig)) {
+      return {
+        success: true,
+        message: "No MCP configuration found in global config",
+        skipped: true,
+      };
+    }
+
+    // Remove MCP entries surgically
+    // First remove opencode-prompts
+    surgicalModifyGlobalConfig(configPath, ["mcp", "opencode-prompts"], undefined);
+
+    // Re-read to check for claude-prompts (legacy name)
+    const updatedConfig = readGlobalConfig();
+    if (updatedConfig?.mcp?.["claude-prompts"]) {
+      surgicalModifyGlobalConfig(configPath, ["mcp", "claude-prompts"], undefined);
+    }
+
+    // Check if mcp is now empty and remove it
+    const finalConfig = readGlobalConfig();
+    if (finalConfig?.mcp && Object.keys(finalConfig.mcp).length === 0) {
+      surgicalModifyGlobalConfig(configPath, ["mcp"], undefined);
+    }
+
+    return {
+      success: true,
+      message: "Removed MCP configuration from global config",
+      modified: true,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      message: `Could not remove global MCP config: ${message}`,
     };
   }
 }

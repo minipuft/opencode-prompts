@@ -23,7 +23,8 @@ import {
 import {
   installPluginRegistration,
   installPluginRegistrationToProject,
-  installMcpConfigWithWorkspace,
+  installMcpConfigToGlobal,
+  installMcpConfigToProject,
 } from "../../lib/opencode-config.js";
 import { detectExistingInstallation } from "../../lib/detect-installation.js";
 
@@ -312,6 +313,7 @@ async function executeInstall(projectDir: string, config: InstallConfig): Promis
   }
 
   // Step 3: MCP configuration
+  // MCP config goes to the same location as plugin registration
   if (config.mcp !== "skip") {
     console.log("Configuring MCP server...");
 
@@ -326,10 +328,14 @@ async function executeInstall(projectDir: string, config: InstallConfig): Promis
       mcpWorkspace = globalPaths.ourHooksDir;
     }
 
-    const result = installMcpConfigWithWorkspace(projectDir, mcpWorkspace);
+    // Route MCP config to same location as plugin registration
+    const result = config.plugin === "global"
+      ? installMcpConfigToGlobal(mcpWorkspace)
+      : installMcpConfigToProject(projectDir, mcpWorkspace);
 
+    const location = config.plugin === "global" ? "global" : "project";
     if (result.success) {
-      console.log(`✓ MCP configured with MCP_WORKSPACE=${mcpWorkspace}`);
+      console.log(`✓ MCP configured in ${location} config with MCP_WORKSPACE=${mcpWorkspace}`);
     } else {
       console.log(`✗ ${result.message}`);
       hasErrors = true;
