@@ -12,6 +12,9 @@ dist/
 # Runtime state
 .opencode/.bun/
 
+# Auto-generated config (don't override user's global config)
+opencode.json
+
 # IDE
 .vscode/
 .idea/

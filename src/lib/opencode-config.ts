@@ -149,7 +149,7 @@ export function readOpencodeConfig(projectDir: string): OpencodeConfig | null {
 }
 
 /**
- * Check if opencode-prompts MCP is already configured.
+ * Check if opencode-prompts MCP is already configured in a specific config.
  */
 export function hasMcpConfig(config: OpencodeConfig | null): boolean {
   if (!config?.mcp) {
@@ -160,13 +160,42 @@ export function hasMcpConfig(config: OpencodeConfig | null): boolean {
 }
 
 /**
+ * Check if opencode-prompts MCP is configured in either project or global config.
+ *
+ * This respects OpenCode's config priority order:
+ *   Project config > Global config
+ *
+ * If MCP is configured globally, we should NOT create a project config
+ * that would override it with default values.
+ */
+export function hasMcpConfigAnywhere(projectDir: string | undefined): boolean {
+  // Check project config first
+  if (projectDir) {
+    const projectConfig = readOpencodeConfig(projectDir);
+    if (hasMcpConfig(projectConfig)) {
+      return true;
+    }
+  }
+
+  // Check global config
+  const globalConfig = readGlobalConfig();
+  return hasMcpConfig(globalConfig);
+}
+
+/**
  * Install MCP configuration for opencode-prompts.
  *
- * This function:
- * 1. Detects existing opencode.json/opencode.jsonc
- * 2. Checks if opencode-prompts MCP is already configured
- * 3. Adds MCP config if missing
- * 4. Creates opencode.json if no config exists
+ * This function respects OpenCode's config priority order:
+ *   Project config > Global config
+ *
+ * It will NOT create a project config if MCP is already configured globally,
+ * as that would override the user's global settings with defaults.
+ *
+ * Priority check order:
+ * 1. Project config exists with MCP → skip (already configured)
+ * 2. Global config exists with MCP → skip (respect user's global settings)
+ * 3. Project config exists without MCP → add MCP to project
+ * 4. No config exists → skip (don't create unnecessary project config)
  *
  * @param projectDir - Project root directory
  */
@@ -179,23 +208,34 @@ export function installMcpConfig(projectDir: string | undefined): McpConfigResul
   }
 
   try {
-    const existingConfig = readOpencodeConfig(projectDir);
-    const existingPath = getConfigPath(projectDir);
+    const existingProjectConfig = readOpencodeConfig(projectDir);
+    const existingProjectPath = getConfigPath(projectDir);
+    const existingGlobalConfig = readGlobalConfig();
 
-    // Case 1: Config exists with MCP already configured
-    if (existingConfig && hasMcpConfig(existingConfig)) {
-      console.log("[opencode-prompts] MCP configuration already exists");
+    // Case 1: Project config exists with MCP already configured
+    if (existingProjectConfig && hasMcpConfig(existingProjectConfig)) {
+      console.log("[opencode-prompts] MCP configuration already exists in project config");
       return {
         success: true,
-        message: "MCP configuration already exists",
+        message: "MCP configuration already exists in project config",
         skipped: true,
       };
     }
 
-    // Case 2: Config exists but no MCP - surgical modification
-    if (existingConfig && existingPath) {
+    // Case 2: Global config has MCP configured - respect it, don't override
+    if (hasMcpConfig(existingGlobalConfig)) {
+      console.log("[opencode-prompts] MCP configuration exists in global config, respecting user settings");
+      return {
+        success: true,
+        message: "MCP configuration exists in global config",
+        skipped: true,
+      };
+    }
+
+    // Case 3: Project config exists but no MCP anywhere - add to project
+    if (existingProjectConfig && existingProjectPath) {
       const mcpConfig = generateMcpConfig();
-      surgicalModifyProjectConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
+      surgicalModifyProjectConfig(existingProjectPath, ["mcp", "opencode-prompts"], mcpConfig);
       console.log("[opencode-prompts] Added MCP configuration to opencode.json");
 
       return {
@@ -205,22 +245,14 @@ export function installMcpConfig(projectDir: string | undefined): McpConfigResul
       };
     }
 
-    // Case 3: No config exists - create minimal one
-    const newConfig: OpencodeConfig = {
-      $schema: "https://opencode.ai/config.json",
-      mcp: {
-        "opencode-prompts": generateMcpConfig(),
-      },
-    };
-
-    const newConfigPath = join(projectDir, "opencode.json");
-    writeFileSync(newConfigPath, JSON.stringify(newConfig, null, 2) + "\n");
-    console.log("[opencode-prompts] Created opencode.json with MCP configuration");
-
+    // Case 4: No config exists anywhere - skip creating project config
+    // Let the user configure via CLI install wizard or manual setup
+    console.log("[opencode-prompts] No existing config found, skipping auto-config");
+    console.log("[opencode-prompts] Run 'opencode-prompts install' for guided setup");
     return {
       success: true,
-      message: "Created opencode.json with MCP configuration",
-      created: true,
+      message: "No existing config found, skipping auto-config (run 'opencode-prompts install' for setup)",
+      skipped: true,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -269,6 +301,10 @@ export function getGlobalConfigPath(): string | null {
 
 /**
  * Read global OpenCode configuration.
+ *
+ * Note: We intentionally ignore non-critical parse errors (like comment syntax)
+ * since jsonc-parser still returns usable config even with minor issues.
+ * Only return null if config is completely unparseable or file doesn't exist.
  */
 export function readGlobalConfig(): OpencodeConfig | null {
   const configPath = getGlobalConfigPath();
@@ -281,7 +317,9 @@ export function readGlobalConfig(): OpencodeConfig | null {
     const errors: jsonc.ParseError[] = [];
     const config = jsonc.parse(content, errors) as OpencodeConfig;
 
-    if (errors.length > 0) {
+    // Only fail on critical errors that prevent config from being usable
+    // jsonc-parser returns partial results even with minor errors
+    if (!config || typeof config !== "object") {
       return null;
     }
 

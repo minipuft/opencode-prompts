@@ -148,30 +148,38 @@ The installer registers the plugin globally in `~/.config/opencode/opencode.json
 }
 ```
 
-For project-level MCP configuration (optional), add to your project's `opencode.json`:
+### MCP Server Configuration
+
+MCP configuration can be set globally or per-project. **Global config is recommended** for consistent behavior across projects:
 
 ```json
 {
   "mcp": {
-    "claude-prompts": {
+    "opencode-prompts": {
       "type": "local",
       "command": ["npx", "claude-prompts", "--transport=stdio"],
       "environment": {
-        "MCP_WORKSPACE": "."
+        "MCP_WORKSPACE": "/path/to/your/workspace"
       }
     }
   }
 }
 ```
 
+**Priority order** (OpenCode merges configs, higher priority wins):
+1. Project config (`./opencode.json`) — highest priority
+2. Global config (`~/.config/opencode/opencode.json`)
+
+> **Note:** The plugin respects your global MCP settings and will not auto-create project configs that would override them.
+
 ### Configuration Locations
 
 | File | Scope | Purpose |
 |------|-------|---------|
-| `~/.config/opencode/opencode.json` | Global | Plugin registration |
+| `~/.config/opencode/opencode.json` | Global | Plugin + MCP registration (recommended) |
 | `~/.claude/hooks/hooks.json` | Global | Hook registration |
 | `~/.claude/hooks/claude-prompts/` | Global | Hook scripts |
-| `./opencode.json` | Project | MCP server config (optional) |
+| `./opencode.json` | Project | Project-specific overrides (optional) |
 
 ## Development
 
@@ -183,12 +191,24 @@ npm run build
 npm test
 ```
 
-### Updating Core
+### Local Testing
 
-The `core/` submodule tracks claude-prompts-mcp:
+To test local changes with OpenCode, link to the bun cache:
 
 ```bash
-git submodule update --remote --merge
+# Remove npm-installed version and link local
+rm -rf ~/.cache/opencode/node_modules/opencode-prompts
+ln -s $(pwd) ~/.cache/opencode/node_modules/opencode-prompts
+
+# Restart OpenCode to load local version
+```
+
+### Updating Core Dependency
+
+The `claude-prompts` package is managed via npm (Dependabot auto-updates):
+
+```bash
+npm update claude-prompts
 ```
 
 ## Related Projects

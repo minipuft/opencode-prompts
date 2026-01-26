@@ -22,7 +22,6 @@ import {
   parsePromptEngineResponse,
   formatChainReminder,
 } from "../../src/lib/session-state.js";
-import { installMcpConfig } from "../../src/lib/opencode-config.js";
 
 // Plugin context type (OpenCode plugin API)
 interface PluginContext {
@@ -80,13 +79,11 @@ export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
 
   console.log("[opencode-prompts] Plugin loaded");
 
-  // NOTE: Hooks are now handled by claude-prompts plugin's hooks/hooks.json
-  // which auto-loads when the plugin is installed. The CLI `opencode-prompts install`
-  // command remains available as a fallback for manual setup if needed.
-
-  // Auto-setup MCP configuration in opencode.json
-  // This registers claude-prompts MCP server from node_modules
-  installMcpConfig(projectDir);
+  // NOTE: MCP configuration is handled by:
+  //   1. User's global config (~/.config/opencode/opencode.json)
+  //   2. CLI install wizard (`opencode-prompts install`)
+  // We intentionally do NOT auto-create project configs to avoid
+  // overriding user's global settings (project config > global config).
 
   // Pre-load cache for faster access
   const cache = loadPromptsCache(projectDir);

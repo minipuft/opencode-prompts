@@ -13,16 +13,16 @@ const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, "..", "..");
 
 describe("OpenCode Plugin Structure", () => {
-  it("has opencode.json configuration", () => {
+  it("has opencode.json configuration with plugin registration", () => {
     const configPath = join(ROOT, "opencode.json");
     expect(existsSync(configPath)).toBe(true);
 
     const config = JSON.parse(readFileSync(configPath, "utf-8"));
-    expect(config.mcp).toBeDefined();
-    // MCP server is registered as "opencode-prompts" (unified naming)
-    expect(config.mcp["opencode-prompts"]).toBeDefined();
-    // Uses npx to run claude-prompts MCP server from node_modules
-    expect(config.mcp["opencode-prompts"].command).toContain("npx");
+    // Plugin registration is required (MCP config can be global or project-level)
+    expect(config.plugin).toBeDefined();
+    expect(config.plugin).toContain("opencode-prompts");
+    // MCP config is optional in project - may come from global config
+    // This respects OpenCode's config priority: project > global
   });
 
   it("has plugin entry point", () => {

@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Simplified CI workflow (no submodule checkout needed)
   - Removed `update-submodule.yml` workflow (replaced by Dependabot)
 
+### Fixed
+
+- **Respect global MCP configuration** - Plugin no longer auto-creates project `opencode.json` that overrides user's global settings
+  - Removed auto-config from plugin startup (was creating unwanted project configs)
+  - `installMcpConfig()` now checks global config before creating project config
+  - Made `readGlobalConfig()` lenient for JSONC parse errors (minor comment issues no longer break config reading)
+  - Added `hasMcpConfigAnywhere()` to check both project and global config locations
+  - Added `opencode.json` to `.gitignore` to prevent accidental commits of auto-generated configs
+  - Updated tests to reflect new behavior (MCP config is optional in project, can come from global)
+
 ## [1.4.0] - 2025-01-17
 
 ### Added
