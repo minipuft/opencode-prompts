@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/minipuft/opencode-prompts/compare/opencode-prompts-v1.4.0...opencode-prompts-v2.0.0) (2026-01-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* Removed git submodule, now uses npm dependency
+
+### Features
+
+* add upstream sync workflow and project documentation ([02432e0](https://github.com/minipuft/opencode-prompts/commit/02432e0b8b1adb60c25e89e4eae3e5579372df2f))
+* auto-register MCP server on plugin load ([fcaedf1](https://github.com/minipuft/opencode-prompts/commit/fcaedf1001a490af3ebec68c953381ea6ae5a274))
+* auto-setup .claude/settings.json for oh-my-opencode ([15cff71](https://github.com/minipuft/opencode-prompts/commit/15cff719751c22b958e9e37ebb95b424b113447f))
+* **cli:** add global plugin registration and interactive prompts ([e3eec2b](https://github.com/minipuft/opencode-prompts/commit/e3eec2b1ae8131398c66474490dd72c9751758e9))
+* **cli:** add multi-step interactive install wizard ([c8e0cdf](https://github.com/minipuft/opencode-prompts/commit/c8e0cdf120c461fd5102dcf1624fb4ec58f2d942))
+* initial OpenCode plugin for claude-prompts MCP ([7222345](https://github.com/minipuft/opencode-prompts/commit/72223450e60ff215ba42d00f62e07918df50a2f2))
+* migrate from submodule to npm dependency ([a5af2ed](https://github.com/minipuft/opencode-prompts/commit/a5af2edacd8594c2b57988eb71e4b0c570f862aa))
+
+
+### Bug Fixes
+
+* **config:** respect global MCP configuration priority ([2c30ea8](https://github.com/minipuft/opencode-prompts/commit/2c30ea857b62859daf308b2747b42670f99fe1e0))
+* **config:** route MCP config to same location as plugin registration ([2836b05](https://github.com/minipuft/opencode-prompts/commit/2836b057fc6557ea0d75ceab222e9439168f5926))
+* **config:** use surgical JSON/JSONC modification to preserve comments ([06b03c7](https://github.com/minipuft/opencode-prompts/commit/06b03c73358b95ba62922af20a81ef2ca8bc4174))
+* correct OpenCode MCP config schema and add root entry point ([0e1b746](https://github.com/minipuft/opencode-prompts/commit/0e1b74684bb3984d2cb85d16f925c13757e073af))
+* **npm:** refine package distribution to exclude test artifacts ([ebbd41c](https://github.com/minipuft/opencode-prompts/commit/ebbd41c0a54fbbd05e438f000b89426dc1308c65))
+* **plugin:** correct entry point for OpenCode plugin loader ([98cf4be](https://github.com/minipuft/opencode-prompts/commit/98cf4be4775366922e8a3a2cfe55bb0b5792aadc))
+* **submodule:** point core to dist branch (956c113) for 1.3.2 ([09469b6](https://github.com/minipuft/opencode-prompts/commit/09469b65741ef4ea08e286dc62cb1866e2d6d9fa))
+
 ## [Unreleased]
 
 ### Changed
