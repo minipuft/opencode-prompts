@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger upstream submodule update
-        uses: peter-evans/repository-dispatch@v3
+        uses: peter-evans/repository-dispatch@v4
         with:
           token: ${{ secrets.UPSTREAM_DISPATCH_TOKEN }}
           repository: minipuft/claude-prompts-mcp
