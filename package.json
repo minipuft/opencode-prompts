@@ -1,6 +1,6 @@
 {
   "name": "opencode-prompts",
-  "version": "1.4.5",
+  "version": "2.0.0",
   "description": "OpenCode plugin for claude-prompts MCP server - chain tracking, gate reminders, and state preservation",
   "type": "module",
   "main": "./dist/.opencode/plugin/index.js",
