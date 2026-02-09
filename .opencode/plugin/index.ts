@@ -1,20 +1,17 @@
 /**
  * OpenCode Prompts Plugin
  *
- * Provides chain tracking, gate reminders, and state preservation
- * for the claude-prompts MCP server in OpenCode CLI.
+ * Provides chain tracking, gate enforcement, skill catalog injection,
+ * and state preservation for the claude-prompts MCP server in OpenCode CLI.
  *
  * Event mapping from Claude Code:
+ *   - PreToolUse → tool.execute.before (gate enforcement)
  *   - PostToolUse → tool.execute.after (chain/gate tracking)
  *   - PreCompact → experimental.session.compacting (state preservation)
- *   - SessionStart → session.created (initialization)
+ *   - SessionStart → experimental.chat.system.transform (skill catalog)
  *   - Stop → session.deleted (cleanup)
- *
- * Note: Hooks (UserPromptSubmit, PostToolUse, PreCompact) are now handled
- * by claude-prompts plugin's hooks/hooks.json which auto-loads on installation.
  */
 
-import { loadPromptsCache } from "../../src/lib/cache-manager.js";
 import {
   loadSessionState,
   saveSessionState,
@@ -22,6 +19,7 @@ import {
   parsePromptEngineResponse,
   formatChainReminder,
 } from "../../src/lib/session-state.js";
+import { scanSkillCatalog } from "../../src/lib/skill-catalog.js";
 
 // Plugin context type (OpenCode plugin API)
 interface PluginContext {
@@ -31,7 +29,7 @@ interface PluginContext {
   directory?: string;
 }
 
-// Tool execution input type
+// Tool execution input type (tool.execute.before and tool.execute.after)
 interface ToolExecuteInput {
   tool: string;
   args?: Record<string, unknown>;
@@ -40,6 +38,11 @@ interface ToolExecuteInput {
   };
   sessionID?: string;
   session_id?: string;
+}
+
+// Tool execution output type (tool.execute.before receives this)
+interface ToolExecuteOutput {
+  args: Record<string, unknown>;
 }
 
 // Compaction input/output types
@@ -51,6 +54,11 @@ interface CompactionInput {
 interface CompactionOutput {
   context: string[];
   prompt?: string;
+}
+
+// System transform output type
+interface SystemTransformOutput {
+  system: string[];
 }
 
 // Event payload type
@@ -71,29 +79,61 @@ function extractSessionId(input: { sessionID?: string; session_id?: string }): s
 /**
  * OpenCode Prompts Plugin
  *
- * Tracks chain/gate state and provides context injection for
- * the claude-prompts MCP server.
+ * Tracks chain/gate state, enforces gate verdicts, injects skill catalog,
+ * and provides context injection for the claude-prompts MCP server.
  */
 export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
   const projectDir = ctx.project?.directory ?? ctx.directory;
 
   console.log("[opencode-prompts] Plugin loaded");
 
-  // NOTE: MCP configuration is handled by:
-  //   1. User's global config (~/.config/opencode/opencode.json)
-  //   2. CLI install wizard (`opencode-prompts install`)
-  // We intentionally do NOT auto-create project configs to avoid
-  // overriding user's global settings (project config > global config).
-
-  // Pre-load cache for faster access
-  const cache = loadPromptsCache(projectDir);
-  if (cache) {
-    console.log(`[opencode-prompts] Loaded ${Object.keys(cache.prompts).length} prompts from cache`);
-  } else {
-    console.log("[opencode-prompts] No prompts cache found - MCP server may not have started yet");
+  // Build skill catalog once at plugin load (reused on every system.transform call)
+  const skillCatalog = scanSkillCatalog();
+  if (skillCatalog) {
+    console.log("[opencode-prompts] Skill catalog loaded");
   }
 
   return {
+    /**
+     * Hook: Before tool execution (gate enforcement)
+     *
+     * Blocks prompt_engine calls when a FAIL gate verdict is pending
+     * or when a gate response is required but missing.
+     * Equivalent to Claude Code's PreToolUse / Gemini's BeforeTool hook.
+     */
+    "tool.execute.before": async (input: ToolExecuteInput, output: ToolExecuteOutput) => {
+      // Only enforce gates on prompt_engine calls
+      if (!input.tool?.includes("prompt_engine")) {
+        return;
+      }
+
+      const sessionId = extractSessionId(input);
+      const state = loadSessionState(sessionId, projectDir);
+
+      if (!state?.pending_gate) {
+        return;
+      }
+
+      // Read gate_verdict from tool output args (OpenCode's pre-execution view)
+      const verdict = output.args?.gate_verdict ?? input.args?.gate_verdict;
+
+      // Block FAIL verdicts — agent must fix issues before continuing
+      if (typeof verdict === "string" && verdict.toUpperCase().includes("FAIL")) {
+        throw new Error(
+          `Gate FAIL: "${verdict}". Fix the issues and retry with GATE_REVIEW: PASS - <reason>.`
+        );
+      }
+
+      // Block if gate is pending but no verdict provided (resuming chain without responding)
+      const chainId = output.args?.chain_id ?? input.args?.chain_id;
+      if (state.pending_gate && !verdict && chainId) {
+        throw new Error(
+          `Gate "${state.pending_gate}" requires a response. ` +
+          `Respond with: GATE_REVIEW: PASS|FAIL - <reason>`
+        );
+      }
+    },
+
     /**
      * Hook: After tool execution
      *
@@ -155,6 +195,22 @@ export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
         return {
           context: outputLines.join("\n"),
         };
+      }
+    },
+
+    /**
+     * Hook: System prompt transform (skill catalog injection)
+     *
+     * Injects categorized skill catalog into every LLM system prompt.
+     * Built once at plugin load time for efficiency.
+     * Equivalent to Gemini's SessionStart / Claude Code's session-skills hook.
+     */
+    "experimental.chat.system.transform": async (
+      _input: unknown,
+      output: SystemTransformOutput
+    ) => {
+      if (skillCatalog) {
+        output.system.push(skillCatalog);
       }
     },
 

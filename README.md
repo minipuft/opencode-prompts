@@ -9,8 +9,10 @@ OpenCode plugin for the [claude-prompts](https://github.com/minipuft/claude-prom
 
 | Problem | Solution | Result |
 |---------|----------|--------|
+| FAIL verdict executed anyway | `tool.execute.before` blocks prompt_engine | Gate enforcement before execution |
 | Chain state lost on `/compact` | State preservation hook | Resume from Step 3/5, not Step 1 |
 | Forgot to respond to gate review | Gate reminder injection | `GATE_REVIEW: PASS\|FAIL` prompt appears |
+| Skills not surfaced on startup | System prompt transform | Categorized skill catalog injected |
 | Verify loop runs forever | Shell verify tracking | Loop terminates after max attempts |
 | MCP server setup is manual | Bundled claude-prompts server | Works out of the box |
 
@@ -101,8 +103,10 @@ opencode-prompts uninstall --cleanup-legacy  # Also clean project hooks
 
 ## Features
 
+- **Gate Enforcement** — Blocks FAIL verdicts and missing gate responses before execution
 - **Chain Tracking** — Shows `Step 2/4` progress after each prompt_engine call
 - **Gate Reminders** — Injects `GATE_REVIEW: PASS|FAIL` format when gates are pending
+- **Skill Catalog** — Injects categorized skill catalog into system prompts
 - **State Preservation** — Chain/gate state survives session compaction
 - **Shell Verify Tracking** — Monitors verification loop attempts
 - **Auto-cleanup** — Clears state when sessions end
@@ -112,7 +116,9 @@ opencode-prompts uninstall --cleanup-legacy  # Also clean project hooks
 
 | OpenCode Hook | Purpose |
 |---------------|---------|
+| `tool.execute.before` | Blocks FAIL gate verdicts and missing gate responses |
 | `tool.execute.after` | Injects chain progress + gate reminders |
+| `experimental.chat.system.transform` | Injects categorized skill catalog into system prompts |
 | `experimental.session.compacting` | Preserves active chain/gate state |
 | `session.deleted` | Cleans up state files |
 
@@ -132,11 +138,22 @@ Use prompt_engine to run the diagnose prompt with scope:"auth"
 
 | Feature | Native OpenCode | + oh-my-opencode |
 |---------|-----------------|------------------|
+| Gate enforcement | Yes | Yes |
 | Chain tracking | Yes | Yes |
 | Gate reminders | Yes | Yes |
+| Skill catalog | Yes | Yes |
 | State preservation | Yes | Yes |
 | `>>prompt` detection | No | Yes |
 | Argument suggestions | No | Yes |
+
+## Known Gaps
+
+| Claude Code Hook | OpenCode Status | Impact |
+|-----------------|-----------------|--------|
+| `UserPromptSubmit` | No equivalent event | `>>prompt` syntax requires oh-my-opencode or explicit MCP calls |
+| `SubagentStop` | No equivalent event | Delegated sub-agents can complete without satisfying gate criteria |
+
+Both gaps are upstream OpenCode limitations. When equivalent events are added, port the corresponding Claude Code hooks.
 
 ## Configuration
 
