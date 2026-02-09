@@ -61,9 +61,7 @@ describe("TypeScript Library Modules", () => {
     expect(existsSync(join(libDir, "session-state.ts"))).toBe(true);
   });
 
-  it("has skill-catalog.ts", () => {
-    expect(existsSync(join(libDir, "skill-catalog.ts"))).toBe(true);
-  });
+
 });
 
 describe("npm Dependency Integration", () => {

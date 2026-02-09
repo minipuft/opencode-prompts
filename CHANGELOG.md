@@ -10,8 +10,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Gate enforcement** — `tool.execute.before` hook blocks FAIL gate verdicts and missing gate responses before prompt_engine execution
-- **Skill catalog injection** — `experimental.chat.system.transform` injects categorized skill catalog from `~/.claude/skills/` into every system prompt
-- **Skill catalog scanner** — `src/lib/skill-catalog.ts` scans SKILL.md frontmatter, categorizes by keyword matching (Process, Architecture, Languages, Tools, Knowledge, Quality)
 
 ### Changed
 

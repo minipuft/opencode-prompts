@@ -1,14 +1,13 @@
 /**
  * OpenCode Prompts Plugin
  *
- * Provides chain tracking, gate enforcement, skill catalog injection,
- * and state preservation for the claude-prompts MCP server in OpenCode CLI.
+ * Provides chain tracking, gate enforcement, and state preservation
+ * for the claude-prompts MCP server in OpenCode CLI.
  *
  * Event mapping from Claude Code:
  *   - PreToolUse → tool.execute.before (gate enforcement)
  *   - PostToolUse → tool.execute.after (chain/gate tracking)
  *   - PreCompact → experimental.session.compacting (state preservation)
- *   - SessionStart → experimental.chat.system.transform (skill catalog)
  *   - Stop → session.deleted (cleanup)
  */
 
@@ -19,7 +18,7 @@ import {
   parsePromptEngineResponse,
   formatChainReminder,
 } from "../../src/lib/session-state.js";
-import { scanSkillCatalog } from "../../src/lib/skill-catalog.js";
+
 
 // Plugin context type (OpenCode plugin API)
 interface PluginContext {
@@ -56,11 +55,6 @@ interface CompactionOutput {
   prompt?: string;
 }
 
-// System transform output type
-interface SystemTransformOutput {
-  system: string[];
-}
-
 // Event payload type
 interface EventPayload {
   type: string;
@@ -79,19 +73,13 @@ function extractSessionId(input: { sessionID?: string; session_id?: string }): s
 /**
  * OpenCode Prompts Plugin
  *
- * Tracks chain/gate state, enforces gate verdicts, injects skill catalog,
- * and provides context injection for the claude-prompts MCP server.
+ * Tracks chain/gate state, enforces gate verdicts, and provides
+ * context injection for the claude-prompts MCP server.
  */
 export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
   const projectDir = ctx.project?.directory ?? ctx.directory;
 
   console.log("[opencode-prompts] Plugin loaded");
-
-  // Build skill catalog once at plugin load (reused on every system.transform call)
-  const skillCatalog = scanSkillCatalog();
-  if (skillCatalog) {
-    console.log("[opencode-prompts] Skill catalog loaded");
-  }
 
   return {
     /**
@@ -195,22 +183,6 @@ export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
         return {
           context: outputLines.join("\n"),
         };
-      }
-    },
-
-    /**
-     * Hook: System prompt transform (skill catalog injection)
-     *
-     * Injects categorized skill catalog into every LLM system prompt.
-     * Built once at plugin load time for efficiency.
-     * Equivalent to Gemini's SessionStart / Claude Code's session-skills hook.
-     */
-    "experimental.chat.system.transform": async (
-      _input: unknown,
-      output: SystemTransformOutput
-    ) => {
-      if (skillCatalog) {
-        output.system.push(skillCatalog);
       }
     },
 
