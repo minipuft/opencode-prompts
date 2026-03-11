@@ -24,7 +24,8 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "release": "npm run build && npm test && npm publish --access public",
-    "prepare": "husky"
+    "prepare": "husky",
+    "validate:legacy-state": "node scripts/validate-legacy-state.mjs"
   },
   "repository": {
     "type": "git",
@@ -46,7 +47,7 @@
     "access": "public"
   },
   "dependencies": {
-    "claude-prompts": "^1.4.0",
+    "claude-prompts": "^2.0.0",
     "jsonc-parser": "^3.3.1"
   },
   "devDependencies": {
