@@ -1,0 +1,13 @@
+{
+  // Build-only config: same settings as tsconfig.json but without `tests/**/*`.
+  //
+  // The base config includes tests so `tsc --noEmit` and editors typecheck them. Emitting
+  // them is a different matter: `tsc` wrote `dist/tests/**/*.js`, and `bun test` then
+  // collected BOTH `tests/e2e/plugin-validation.test.ts` and its compiled twin. The compiled
+  // copy resolves its relative path assertions from `dist/`, so all nine failed — which is
+  // why CI ran red from March 2026 onward with no source change to explain it.
+  //
+  // `.npmignore` already stripped `dist/tests` from the tarball, so nothing published changes.
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*", ".opencode/plugin/**/*"]
+}
