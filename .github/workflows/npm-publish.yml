@@ -3,6 +3,12 @@ name: Publish to npm
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vX.Y.Z release tag to republish after a workflow-only failure
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -10,13 +16,13 @@ permissions:
 
 jobs:
   publish:
-    if: startsWith(github.event.release.tag_name, 'v')
+    if: startsWith(github.event.release.tag_name || inputs.release_tag, 'v')
     runs-on: ubuntu-latest
     environment: npm
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
           submodules: true
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -27,9 +33,11 @@ jobs:
 
       - name: Verify tag/version alignment
         shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
         run: |
           set -euo pipefail
-          tag='${{ github.event.release.tag_name }}'
+          tag="$RELEASE_TAG"
           sha="$(git rev-parse HEAD)"
 
           # Parse version from 'vX.Y.Z'
@@ -90,7 +98,7 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          tarballs=(artifacts/*.tgz)
+          tarballs=(./artifacts/*.tgz)
           if [[ ${#tarballs[@]} -ne 1 ]]; then
             echo "Expected one verified tarball, found ${#tarballs[@]}"
             exit 1
