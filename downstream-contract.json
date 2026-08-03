@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "profile": "npm-publisher",
+  "nodeVersionFile": ".node-version",
+  "packageManager": "npm",
+  "upstreamPackage": "claude-prompts",
+  "upstreamWriter": "claude-prompts-release-sync",
+  "requiredPaths": [
+    "opencode.json",
+    ".opencode/plugin/index.ts",
+    "node_modules/claude-prompts/dist",
+    "node_modules/claude-prompts/hooks"
+  ],
+  "requiredChecks": ["Consumer Contract", "validate", "validate-plugin"],
+  "localValidationWorkflow": ".github/workflows/ci.yml",
+  "publish": {
+    "packageName": "opencode-prompts",
+    "requiresTrustedPublisher": true,
+    "packedSizeBudgetBytes": 75000,
+    "unpackedSizeBudgetBytes": 350000
+  }
+}

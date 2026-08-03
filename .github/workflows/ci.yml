@@ -6,51 +6,48 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   validate:
+    name: validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install
-
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Install frozen npm dependencies
+        run: npm ci
       - name: Type check
-        run: bun run typecheck
-
+        run: npm run typecheck
       - name: Build
-        run: bun run build
-
-      - name: Run tests
-        run: bun test
+        run: npm run build
+      - name: Run Jest
+        run: npm test -- --runInBand
+      - name: Verify package policy fixtures
+        run: npm run verify:package-artifact:self-test
+      - name: Verify the exact package artifact
+        run: npm run verify:package-artifact
 
   validate-plugin:
+    name: validate-plugin
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          bun-version: latest
-
-      - name: Install dependencies
-        run: bun install
-
-      - name: Install plugin dependencies
-        run: |
-          cd .opencode
-          bun install
-
+          node-version-file: .node-version
+          package-manager-cache: false
+      - name: Install frozen npm dependencies
+        run: npm ci
+      - name: Validate plugin behavior
+        run: npm test -- --runInBand tests/e2e/plugin-validation.test.ts
       - name: Validate plugin structure
         run: |
-          # Check required files exist
           test -f opencode.json
           test -f .opencode/plugin/index.ts
           test -d node_modules/claude-prompts/dist
           test -d node_modules/claude-prompts/hooks
-
-          echo "Plugin structure validated successfully"
