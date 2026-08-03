@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1](https://github.com/minipuft/opencode-prompts/compare/v2.0.0...v2.0.1) (2026-08-03)
+
+
+### Fixed
+
+* **ci:** add guarded npm publish recovery ([#46](https://github.com/minipuft/opencode-prompts/issues/46)) ([49de113](https://github.com/minipuft/opencode-prompts/commit/49de1135cc881a181fa60a400a27efe8cae5aaf5))
+* **ci:** verify release ancestry reliably ([#48](https://github.com/minipuft/opencode-prompts/issues/48)) ([b55e12b](https://github.com/minipuft/opencode-prompts/commit/b55e12bc2cb22b96c9c711dfb918ad2731c8346c))
+
 ## [2.0.0](https://github.com/minipuft/opencode-prompts/compare/v1.4.5...v2.0.0) (2026-08-03)
 
 
