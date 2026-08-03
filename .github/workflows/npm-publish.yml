@@ -61,7 +61,9 @@ jobs:
           fi
 
           # Guardrail: only publish releases whose tag commit is on main
-          git fetch origin main --depth=1
+          # The tag checkout is shallow. Fetch full main history so an older release
+          # tag is not rejected merely because its ancestry is outside depth 1.
+          git fetch origin main --unshallow
           if ! git merge-base --is-ancestor "$sha" origin/main; then
             echo "Refusing to publish: tag commit is not on main (sha=$sha)"
             exit 1
