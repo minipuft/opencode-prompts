@@ -23,9 +23,10 @@
     "test:e2e": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/e2e/",
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build",
-    "release": "npm run build && npm test && npm publish --access public",
+    "verify:package-artifact": "node scripts/verify-package-artifact.mjs",
+    "verify:package-artifact:self-test": "node scripts/verify-package-artifact.mjs --self-test",
     "prepare": "husky",
-    "validate:legacy-state": "node scripts/validate-legacy-state.mjs"
+    "validate": "npm run typecheck && npm run build && npm test -- --runInBand && npm run verify:package-artifact:self-test && npm run verify:package-artifact"
   },
   "repository": {
     "type": "git",
