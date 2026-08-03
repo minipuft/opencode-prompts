@@ -221,7 +221,9 @@ ln -s $(pwd) ~/.cache/opencode/node_modules/opencode-prompts
 
 ### Updating Core Dependency
 
-The `claude-prompts` package is managed via npm (Dependabot auto-updates):
+The `claude-prompts` package is synchronized by the upstream release workflow.
+Renovate manages other dependency updates using the shared repository standards.
+For local testing, update the package and lockfile together:
 
 ```bash
 npm update claude-prompts
