@@ -95,8 +95,6 @@ jobs:
           if-no-files-found: error
 
       - name: Publish the verified tarball with provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           shopt -s nullglob
