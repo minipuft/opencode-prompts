@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ChainState } from "./types.js";
 import { getCacheDir } from "./workspace.js";
+import { loadExtractionPatterns } from "./extraction-patterns.js";
 
 // In-memory session state (primary storage for OpenCode)
 const sessionStates = new Map<string, ChainState>();
@@ -118,6 +119,14 @@ export function clearSessionState(sessionId: string, projectDir?: string): void 
 }
 
 /**
+ * Remove a session's in-memory entry without touching its persisted file.
+ * Used to simulate a process restart (tests) — the next load falls back to disk.
+ */
+export function evictMemorySession(sessionId: string): void {
+  sessionStates.delete(sessionId);
+}
+
+/**
  * Get all in-memory session states (for debugging).
  */
 export function getAllSessionStates(): Map<string, ChainState> {
@@ -171,24 +180,42 @@ export function parsePromptEngineResponse(
     shell_verify_attempts: 0,
   };
 
-  // Detect step indicators: "Step 1 of 3", "step 2/4", "Progress 1/2", etc.
-  const stepMatch = content.match(
-    /(?:[Ss]tep|[Pp]rogress)\s+(\d+)\s*(?:of|\/)\s*(\d+)/
-  );
+  // Extraction patterns come from the generated upstream contract (single source
+  // shared with the Python hooks); bundled defaults apply when the artifact is absent.
+  const patterns = loadExtractionPatterns();
+
+  // Detect step indicators: "Step 1 of 3", "step 2/4", "Progress 1/2",
+  // "Chain complete (2/2)" — same shape as the Python hooks.
+  const stepMatch = content.match(new RegExp(patterns.step));
   if (stepMatch) {
     state.current_step = parseInt(stepMatch[1], 10);
     state.total_steps = parseInt(stepMatch[2], 10);
   }
 
-  // Detect chain_id from resume token pattern (capture full ID including prefix)
-  const chainMatch = content.match(/(chain[-_][a-zA-Z0-9_#-]+)/);
+  // Detect chain_id from resume token: "chain-<name>#<run>" (hyphen only, matching
+  // Python — avoids matching literal "chain_id" parameter names).
+  const chainMatch = content.match(new RegExp(patterns.chainId));
   if (chainMatch) {
     state.chain_id = chainMatch[1];
   }
 
-  // Detect inline gates section
-  if (content.includes("## Inline Gates") || content.includes("Gate")) {
-    // Extract gate names
+  // Gate detection mirrors hooks/lib/session_state.py: a pending gate requires a
+  // Review Required header or an explicit **Gates**: list — NOT any prose containing
+  // the word "Gate", which produced false-positive pending states.
+  const gateHeaderMatch = content.match(new RegExp(patterns.gateHeader));
+  const gatesListMatch = content.match(new RegExp(patterns.gatesList));
+
+  if (gateHeaderMatch || gatesListMatch) {
+    if (gatesListMatch) {
+      state.pending_gate = gatesListMatch[1].trim();
+    }
+    // Sentinel: review required but no ids extracted — downstream callers must not
+    // treat the gate as cleared. Same rationale as the Python hook.
+    if (!state.pending_gate) {
+      state.pending_gate = "review";
+    }
+  } else if (content.includes("## Inline Gates")) {
+    // Legacy inline gates section
     const gateNames = content.match(/###\s*([A-Za-z][A-Za-z0-9 _-]+)\n/g);
     if (gateNames && gateNames.length > 0) {
       const firstGate = gateNames[0].replace(/^###\s*/, "").replace(/\n$/, "");
@@ -211,8 +238,8 @@ export function parsePromptEngineResponse(
     state.pending_shell_verify = verifyMatch[1].trim();
   }
 
-  // Detect attempt count: "Attempt 2/5" or "(Attempt 2/5)"
-  const attemptMatch = content.match(/Attempt\s+(\d+)\/(\d+)/);
+  // Detect attempt count: "Attempt 2/5", "(Attempt 2/5)", "(attempt 2/5)"
+  const attemptMatch = content.match(/\(?[Aa]ttempt\s+(\d+)\/(\d+)\)?/);
   if (attemptMatch) {
     state.shell_verify_attempts = parseInt(attemptMatch[1], 10);
   }

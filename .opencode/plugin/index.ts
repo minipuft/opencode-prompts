@@ -18,6 +18,12 @@ import {
   parsePromptEngineResponse,
   formatChainReminder,
 } from "../../src/lib/session-state.js";
+import {
+  evaluateGateBlock,
+  evaluateArmedGateBlock,
+  detectSkillGateArm,
+  disarmGate,
+} from "../../src/lib/gate-enforcement.js";
 
 
 // Plugin context type (OpenCode plugin API)
@@ -90,35 +96,41 @@ export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
      * Equivalent to Claude Code's PreToolUse / Gemini's BeforeTool hook.
      */
     "tool.execute.before": async (input: ToolExecuteInput, output: ToolExecuteOutput) => {
-      // Only enforce gates on prompt_engine calls
+      const sessionId = extractSessionId(input);
+      const state = loadSessionState(sessionId, projectDir);
+
+      // Armed exported-skill gates block EVERY tool until reviewed (plan row 4.2).
+      // A PASS verdict disarms and proceeds; FAIL keeps the gate armed.
+      if (state?.gate_armed) {
+        const armedDenial = evaluateArmedGateBlock(state, input.args, output.args);
+        const verdict = output.args?.gate_verdict ?? input.args?.gate_verdict;
+        const passed =
+          (typeof verdict === "string" && verdict.toUpperCase().includes("PASS")) ||
+          (verdict !== null &&
+            typeof verdict === "object" &&
+            String((verdict as Record<string, unknown>).overall ?? "").toUpperCase() === "PASS");
+        if (!armedDenial) {
+          saveSessionState(sessionId, disarmGate(state), projectDir, true);
+        } else if (passed) {
+          saveSessionState(sessionId, disarmGate(state), projectDir, true);
+          return;
+        } else {
+          throw new Error(armedDenial);
+        }
+      }
+
+      // Only enforce chain gates on prompt_engine calls
       if (!input.tool?.includes("prompt_engine")) {
         return;
       }
 
-      const sessionId = extractSessionId(input);
-      const state = loadSessionState(sessionId, projectDir);
-
-      if (!state?.pending_gate) {
-        return;
-      }
-
-      // Read gate_verdict from tool output args (OpenCode's pre-execution view)
-      const verdict = output.args?.gate_verdict ?? input.args?.gate_verdict;
-
-      // Block FAIL verdicts — agent must fix issues before continuing
-      if (typeof verdict === "string" && verdict.toUpperCase().includes("FAIL")) {
-        throw new Error(
-          `Gate FAIL: "${verdict}". Fix the issues and retry with GATE_REVIEW: PASS - <reason>.`
-        );
-      }
-
-      // Block if gate is pending but no verdict provided (resuming chain without responding)
-      const chainId = output.args?.chain_id ?? input.args?.chain_id;
-      if (state.pending_gate && !verdict && chainId) {
-        throw new Error(
-          `Gate "${state.pending_gate}" requires a response. ` +
-          `Respond with: GATE_REVIEW: PASS|FAIL - <reason>`
-        );
+      const denial = evaluateGateBlock({
+        state,
+        inputArgs: input.args,
+        outputArgs: output.args,
+      });
+      if (denial) {
+        throw new Error(denial);
       }
     },
 
@@ -129,6 +141,30 @@ export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
      * Equivalent to Claude Code's PostToolUse hook.
      */
     "tool.execute.after": async (input: ToolExecuteInput) => {
+      // Arm exported-skill gates when the agent reads a gated skill (plan row 4.1).
+      const arm = detectSkillGateArm(input.tool, input.args, projectDir);
+      if (arm) {
+        const armSessionId = extractSessionId(input);
+        const existing = loadSessionState(armSessionId, projectDir) ?? {
+          chain_id: "",
+          current_step: 0,
+          total_steps: 0,
+          pending_gate: null,
+          gate_criteria: [],
+          last_prompt_id: "",
+          pending_shell_verify: null,
+          shell_verify_attempts: 0,
+        };
+        if (existing.gate_armed?.skillPath !== arm.skillPath) {
+          existing.gate_armed = {
+            skillPath: arm.skillPath,
+            gates: arm.gates,
+            armedAt: new Date().toISOString(),
+          };
+          saveSessionState(armSessionId, existing, projectDir, true);
+        }
+      }
+
       // Only process prompt_engine calls
       if (!input.tool?.includes("prompt_engine")) {
         return;
@@ -149,8 +185,9 @@ export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
         state.chain_id = inputChainId;
       }
 
-      // Save state for this session
-      saveSessionState(sessionId, state, projectDir);
+      // Save state for this session — persisted to file so a plugin restart
+      // (or OpenCode restart) recovers chain/gate/armed-gate state (plan row 3.3).
+      saveSessionState(sessionId, state, projectDir, true);
 
       // Build output lines for context injection
       const outputLines: string[] = [];

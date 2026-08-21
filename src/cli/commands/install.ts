@@ -2,9 +2,11 @@
  * Install command for opencode-prompts CLI.
  *
  * Provides an interactive wizard to set up:
- * 1. Claude Code hooks (global or project)
- * 2. Plugin registration (global or project)
- * 3. MCP server configuration with custom workspace
+ * 1. Plugin registration (global or project)
+ * 2. MCP server configuration with custom workspace
+ *
+ * Enforcement runs through OpenCode's native plugin API (.opencode/plugin) —
+ * no Claude Code hook files are installed.
  */
 
 import { resolve } from "node:path";
@@ -14,13 +16,6 @@ import {
   type WizardStep,
 } from "../wizard.js";
 import {
-  installGlobalHooks,
-  installProjectHooks,
-  getGlobalPaths,
-  getProjectPaths,
-  findHooksSource,
-} from "../../lib/hooks-config.js";
-import {
   installPluginRegistration,
   installPluginRegistrationToProject,
   installMcpConfigToGlobal,
@@ -28,13 +23,15 @@ import {
 } from "../../lib/opencode-config.js";
 import { detectExistingInstallation } from "../../lib/detect-installation.js";
 
+/** Default MCP_WORKSPACE: the bundled claude-prompts server inside this package. */
+const DEFAULT_MCP_WORKSPACE = "./node_modules/claude-prompts";
+
 /**
  * Install configuration choices.
  */
 interface InstallConfig {
-  hooks: "global" | "project" | "skip";
   plugin: "global" | "project" | "skip";
-  mcp: "global-hooks" | "custom" | "skip";
+  mcp: "default" | "custom" | "skip";
   mcpPath?: string;
 }
 
@@ -42,9 +39,8 @@ interface InstallConfig {
  * Default configuration values.
  */
 const DEFAULTS: InstallConfig = {
-  hooks: "global",
   plugin: "global",
-  mcp: "global-hooks",
+  mcp: "default",
 };
 
 /**
@@ -83,8 +79,8 @@ export async function install(args: string[]): Promise<void> {
   let config: InstallConfig | null = null;
 
   while (!config) {
-    const wizardConfig = await runInstallWizard(projectDir);
-    const summary = buildSummary(projectDir, wizardConfig);
+    const wizardConfig = await runInstallWizard();
+    const summary = buildSummary(wizardConfig);
 
     const action = await confirmWizard(summary);
 
@@ -105,38 +101,8 @@ export async function install(args: string[]): Promise<void> {
 /**
  * Run the interactive wizard.
  */
-async function runInstallWizard(projectDir: string): Promise<InstallConfig> {
-  const globalPaths = getGlobalPaths();
-  const projectPaths = getProjectPaths(projectDir);
-
-  // Step 1: Hooks
-  const hooksStep: WizardStep = {
-    id: "hooks",
-    title: "HOOKS",
-    description: "Install Claude Code hooks for chain tracking and gate reminders?",
-    choices: [
-      {
-        key: "1",
-        label: `Global (${globalPaths.ourHooksDir})`,
-        value: "global",
-        recommended: true,
-      },
-      {
-        key: "2",
-        label: `Project (${projectPaths.ourHooksDir})`,
-        value: "project",
-      },
-      {
-        key: "3",
-        label: "Skip hooks",
-        value: "skip",
-      },
-    ],
-  };
-
-  const hooksChoice = await runWizardStep(hooksStep, 1, 3);
-
-  // Step 2: Plugin Registration
+async function runInstallWizard(): Promise<InstallConfig> {
+  // Step 1: Plugin Registration
   const pluginStep: WizardStep = {
     id: "plugin",
     title: "PLUGIN REGISTRATION",
@@ -161,15 +127,9 @@ async function runInstallWizard(projectDir: string): Promise<InstallConfig> {
     ],
   };
 
-  const pluginChoice = await runWizardStep(pluginStep, 2, 3);
+  const pluginChoice = await runWizardStep(pluginStep, 1, 2);
 
-  // Step 3: MCP Configuration
-  const hooksDir = hooksChoice === "global"
-    ? globalPaths.ourHooksDir
-    : hooksChoice === "project"
-      ? projectPaths.ourHooksDir
-      : globalPaths.ourHooksDir;
-
+  // Step 2: MCP Configuration
   const mcpStep: WizardStep = {
     id: "mcp",
     title: "MCP SERVER",
@@ -177,8 +137,8 @@ async function runInstallWizard(projectDir: string): Promise<InstallConfig> {
     choices: [
       {
         key: "1",
-        label: `Set MCP_WORKSPACE to hooks dir (${hooksDir})`,
-        value: "global-hooks",
+        label: `Bundled server (${DEFAULT_MCP_WORKSPACE})`,
+        value: "default",
         recommended: true,
       },
       {
@@ -191,7 +151,7 @@ async function runInstallWizard(projectDir: string): Promise<InstallConfig> {
     customPrompt: "Enter custom MCP_WORKSPACE path",
   };
 
-  const mcpChoice = await runWizardStep(mcpStep, 3, 3);
+  const mcpChoice = await runWizardStep(mcpStep, 2, 2);
 
   // Parse custom path if provided
   let mcpValue: InstallConfig["mcp"] = "skip";
@@ -205,7 +165,6 @@ async function runInstallWizard(projectDir: string): Promise<InstallConfig> {
   }
 
   return {
-    hooks: hooksChoice as InstallConfig["hooks"],
     plugin: pluginChoice as InstallConfig["plugin"],
     mcp: mcpValue,
     mcpPath,
@@ -216,21 +175,9 @@ async function runInstallWizard(projectDir: string): Promise<InstallConfig> {
  * Build summary for confirmation.
  */
 function buildSummary(
-  projectDir: string,
   config: InstallConfig
 ): { label: string; value: string }[] {
   const summary: { label: string; value: string }[] = [];
-  const globalPaths = getGlobalPaths();
-  const projectPaths = getProjectPaths(projectDir);
-
-  // Hooks
-  if (config.hooks === "global") {
-    summary.push({ label: "Hooks", value: globalPaths.ourHooksDir });
-  } else if (config.hooks === "project") {
-    summary.push({ label: "Hooks", value: projectPaths.ourHooksDir });
-  } else {
-    summary.push({ label: "Hooks", value: "(skipped)" });
-  }
 
   // Plugin
   if (config.plugin === "global") {
@@ -242,11 +189,8 @@ function buildSummary(
   }
 
   // MCP
-  if (config.mcp === "global-hooks") {
-    const hooksDir = config.hooks === "project"
-      ? projectPaths.ourHooksDir
-      : globalPaths.ourHooksDir;
-    summary.push({ label: "MCP_WORKSPACE", value: hooksDir });
+  if (config.mcp === "default") {
+    summary.push({ label: "MCP_WORKSPACE", value: DEFAULT_MCP_WORKSPACE });
   } else if (config.mcp === "custom" && config.mcpPath) {
     summary.push({ label: "MCP_WORKSPACE", value: config.mcpPath });
   } else {
@@ -261,37 +205,8 @@ function buildSummary(
  */
 async function executeInstall(projectDir: string, config: InstallConfig): Promise<void> {
   let hasErrors = false;
-  const globalPaths = getGlobalPaths();
-  const projectPaths = getProjectPaths(projectDir);
 
-  // Step 1: Install hooks
-  if (config.hooks !== "skip") {
-    console.log("Installing hooks...");
-
-    const hooksSource = findHooksSource(projectDir);
-    if (!hooksSource) {
-      console.log("✗ Could not find hooks in node_modules/claude-prompts/hooks");
-      console.log("  Ensure 'claude-prompts' package is installed.\n");
-      hasErrors = true;
-    } else {
-      const result = config.hooks === "global"
-        ? installGlobalHooks(projectDir)
-        : installProjectHooks(projectDir);
-
-      if (result.success) {
-        const path = config.hooks === "global"
-          ? globalPaths.ourHooksDir
-          : projectPaths.ourHooksDir;
-        console.log(`✓ Installed hooks to ${path}`);
-      } else {
-        console.log(`✗ ${result.message}`);
-        hasErrors = true;
-      }
-    }
-    console.log();
-  }
-
-  // Step 2: Plugin registration
+  // Step 1: Plugin registration
   if (config.plugin !== "skip") {
     console.log("Registering plugin...");
 
@@ -312,20 +227,18 @@ async function executeInstall(projectDir: string, config: InstallConfig): Promis
     console.log();
   }
 
-  // Step 3: MCP configuration
+  // Step 2: MCP configuration
   // MCP config goes to the same location as plugin registration
   if (config.mcp !== "skip") {
     console.log("Configuring MCP server...");
 
     let mcpWorkspace: string;
-    if (config.mcp === "global-hooks") {
-      mcpWorkspace = config.hooks === "project"
-        ? projectPaths.ourHooksDir
-        : globalPaths.ourHooksDir;
+    if (config.mcp === "default") {
+      mcpWorkspace = DEFAULT_MCP_WORKSPACE;
     } else if (config.mcp === "custom" && config.mcpPath) {
       mcpWorkspace = config.mcpPath;
     } else {
-      mcpWorkspace = globalPaths.ourHooksDir;
+      mcpWorkspace = DEFAULT_MCP_WORKSPACE;
     }
 
     // Route MCP config to same location as plugin registration
@@ -355,9 +268,6 @@ async function executeInstall(projectDir: string, config: InstallConfig): Promis
   console.log("To verify installation:");
   console.log("  1. Restart OpenCode");
   console.log("  2. Try: >>diagnose to test the setup");
-  if (config.hooks === "global") {
-    console.log("  3. Check hooks: cat ~/.claude/hooks/hooks.json");
-  }
   console.log();
 }
 
@@ -374,19 +284,16 @@ Options:
 Description:
   Launches an interactive wizard to configure:
 
-  1. Hooks - Chain tracking, gate reminders, state preservation
-     • Global: ~/.claude/hooks/claude-prompts/
-     • Project: ./.claude/hooks/claude-prompts/
-
-  2. Plugin Registration - Register with OpenCode
+  1. Plugin Registration - Register with OpenCode
      • Global: ~/.config/opencode/opencode.json
      • Project: ./opencode.json
 
-  3. MCP Server - prompt_engine tools
-     • Configure MCP_WORKSPACE path
+  2. MCP Server - prompt_engine tools
+     • Bundled server: ./node_modules/claude-prompts
+     • Or a custom MCP_WORKSPACE path
 
-  The wizard lets you choose locations for each component.
-  Use --yes to accept all defaults for scripted installs.
+  Gate enforcement, chain tracking, and state preservation run through
+  OpenCode's native plugin API — no separate hook files are installed.
 
 Examples:
   opencode-prompts install      # Interactive wizard

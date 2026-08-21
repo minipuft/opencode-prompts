@@ -30,6 +30,18 @@ export interface GateInfo {
   triggers: string[];
 }
 
+/**
+ * An armed exported-skill gate: the agent read a skill whose gates/ directory
+ * declares mechanical review criteria, so further tool calls are blocked until
+ * a GATE_REVIEW verdict clears it (plan row 4.1/4.2).
+ */
+export interface GateArmedState {
+  /** Absolute path of the exported skill directory that armed the gate. */
+  skillPath: string;
+  gates: Array<{ id: string; criteria?: unknown[] }>;
+  armedAt: string;
+}
+
 export interface ChainState {
   chain_id: string;
   current_step: number;
@@ -39,6 +51,7 @@ export interface ChainState {
   last_prompt_id: string;
   pending_shell_verify: string | null;
   shell_verify_attempts: number;
+  gate_armed?: GateArmedState;
 }
 
 export interface PromptsCache {

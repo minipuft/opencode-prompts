@@ -58,17 +58,18 @@ opencode-prompts install [options]
 
 | Component | Location | Description |
 |-----------|----------|-------------|
-| Hook scripts | `~/.claude/hooks/claude-prompts/` | Python hooks for chain tracking, gate reminders, state preservation |
-| Hook registration | `~/.claude/hooks/hooks.json` | Registers hooks with Claude Code |
 | Plugin registration | `~/.config/opencode/opencode.json` | Adds `"opencode-prompts"` to global plugin array |
+| MCP server | `~/.config/opencode/opencode.json` | Registers the bundled claude-prompts server (`MCP_WORKSPACE=./node_modules/claude-prompts`) |
+
+Gate enforcement, chain tracking, and state preservation run through OpenCode's native plugin API — no hook files are installed.
 
 **Examples:**
 
 ```bash
 opencode-prompts install              # Interactive install
 opencode-prompts install -y           # Non-interactive (CI/scripts)
-opencode-prompts install --force      # Reinstall hooks
-opencode-prompts install --skip-hooks # Plugin registration only
+opencode-prompts install --force      # Reinstall plugin registration
+opencode-prompts install --skip-hooks # Plugin registration only (deprecated flag, no-op)
 ```
 
 ### `uninstall`
@@ -90,9 +91,9 @@ opencode-prompts uninstall [options]
 
 | Component | Location |
 |-----------|----------|
-| Hook scripts | `~/.claude/hooks/claude-prompts/` |
-| Hook registration | `~/.claude/hooks/hooks.json` |
 | Plugin registration | `~/.config/opencode/opencode.json` |
+| Legacy hook scripts | `~/.claude/hooks/claude-prompts/` (from older versions) |
+| Legacy hook registration | `~/.claude/hooks/hooks.json` (from older versions) |
 
 **Examples:**
 
@@ -104,13 +105,28 @@ opencode-prompts uninstall --cleanup-legacy  # Also clean project hooks
 ## Features
 
 - **Gate Enforcement** — Blocks FAIL verdicts and missing gate responses before execution
+- **Exported-Skill Gates** — Reading an exported skill that ships `gates/index.json` arms its gates; every further tool call is blocked until `GATE_REVIEW: PASS|FAIL` clears them
 - **Chain Tracking** — Shows `Step 2/4` progress after each prompt_engine call
 - **Gate Reminders** — Injects `GATE_REVIEW: PASS|FAIL` format when gates are pending
 
-- **State Preservation** — Chain/gate state survives session compaction
+- **State Preservation** — Chain/gate/armed-gate state survives session compaction AND plugin restarts (persisted to disk)
 - **Shell Verify Tracking** — Monitors verification loop attempts
 - **Auto-cleanup** — Clears state when sessions end
 - **Bundled MCP Server** — Includes claude-prompts server, no separate install needed
+
+### Exported-Skill Gate Enforcement
+
+The upstream exporter writes a `gates/index.json` manifest beside every gated skill's `SKILL.md`. When you read such a skill, the plugin arms its gates for the session:
+
+```text
+[read] ~/.config/opencode/skills/strategicImplement/SKILL.md
+→ gates armed: workflow-preflight, plan-quality, ... (12)
+
+[bash] blocked: "Exported-skill gates armed from ... require review.
+Respond with GATE_REVIEW: PASS|FAIL - <reason> before running further tools."
+```
+
+A `PASS` verdict disarms the gate (durably); `FAIL` keeps it armed with an escalation message. Resolution verbs (`gate_action`, `cancel`) are loaded from the bundled claude-prompts contract so legitimate gate exits are never trapped.
 
 ## Hooks
 
@@ -193,8 +209,7 @@ MCP configuration can be set globally or per-project. **Global config is recomme
 | File | Scope | Purpose |
 |------|-------|---------|
 | `~/.config/opencode/opencode.json` | Global | Plugin + MCP registration (recommended) |
-| `~/.claude/hooks/hooks.json` | Global | Hook registration |
-| `~/.claude/hooks/claude-prompts/` | Global | Hook scripts |
+| `.opencode/plugin/index.ts` | Package | Enforcement via OpenCode plugin API (gate blocks, chain tracking, state preservation) |
 | `./opencode.json` | Project | Project-specific overrides (optional) |
 
 ## Development

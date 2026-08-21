@@ -28,3 +28,6 @@ coverage/
 
 # Logs
 *.log
+
+# Local hook runtime state (session db)
+runtime-state/

@@ -1,16 +1,18 @@
 /**
- * Shared hooks configuration for OpenCode prompts.
+ * Legacy Claude Code hook cleanup for OpenCode prompts.
  *
- * Provides types and utilities for managing Claude hooks in .claude/settings.json.
- * Used by both the OpenCode plugin (auto-setup) and CLI commands (install/uninstall).
+ * OpenCode never reads ~/.claude/hooks/hooks.json or .claude/settings.json —
+ * enforcement lives entirely in the OpenCode plugin API (.opencode/plugin/index.ts).
+ * This module exists only so `opencode-prompts uninstall` can remove hook files
+ * written by older versions of the installer.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, cpSync, rmSync, readdirSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { homedir } from "node:os";
 
 /**
- * Patterns used to identify our hooks for install/uninstall.
+ * Patterns used to identify our hooks for uninstall.
  */
 export const HOOK_PATTERNS = [
   "opencode-prompts",
@@ -54,7 +56,7 @@ export interface ClaudeSettings {
 }
 
 /**
- * Result of a hook operation (install/uninstall).
+ * Result of a hook operation (uninstall).
  */
 export interface HookOperationResult {
   success: boolean;
@@ -63,49 +65,6 @@ export interface HookOperationResult {
   merged?: boolean;
   removed?: number;
   backupPath?: string;
-}
-
-/**
- * Generate hook configuration for opencode-prompts.
- *
- * @param hooksDir - Relative path from project root to the hooks directory
- */
-export function generateHooksConfig(hooksDir: string): ClaudeHooksConfig {
-  return {
-    UserPromptSubmit: [
-      {
-        matcher: "*",
-        hooks: [
-          {
-            type: "command",
-            command: `python3 ${hooksDir}/prompt-suggest.py`,
-          },
-        ],
-      },
-    ],
-    PostToolUse: [
-      {
-        matcher: "*prompt_engine*",
-        hooks: [
-          {
-            type: "command",
-            command: `python3 ${hooksDir}/post-prompt-engine.py`,
-          },
-        ],
-      },
-    ],
-    PreCompact: [
-      {
-        matcher: "*",
-        hooks: [
-          {
-            type: "command",
-            command: `python3 ${hooksDir}/pre-compact.py`,
-          },
-        ],
-      },
-    ],
-  };
 }
 
 /**
@@ -135,51 +94,6 @@ export function filterOurHooks(hookConfigs: HookConfig[]): HookConfig[] {
       hooks: config.hooks.filter((hook) => !isOurHook(hook.command)),
     }))
     .filter((config) => config.hooks.length > 0);
-}
-
-/**
- * Merge our hooks into existing hooks config (preserves existing hooks).
- */
-export function mergeHooksConfig(
-  existing: ClaudeHooksConfig | undefined,
-  ourHooks: ClaudeHooksConfig
-): ClaudeHooksConfig {
-  const merged: ClaudeHooksConfig = { ...existing };
-
-  for (const [event, hooks] of Object.entries(ourHooks)) {
-    const eventKey = event as keyof ClaudeHooksConfig;
-    merged[eventKey] = [...(merged[eventKey] ?? []), ...(hooks ?? [])];
-  }
-
-  return merged;
-}
-
-/**
- * Get the hooks directory path for this package.
- *
- * Hooks are located in the claude-prompts npm package (our dependency).
- *
- * @param projectDir - Project root directory
- * @param pluginDir - Plugin installation directory (optional, for OpenCode plugin context)
- */
-export function getHooksDir(projectDir: string, pluginDir?: string): string {
-  // Hooks are in claude-prompts package (our dependency)
-  // Check node_modules/claude-prompts/hooks first
-  const claudePromptsHooksDir = join("node_modules", "claude-prompts", "hooks");
-  if (existsSync(join(projectDir, claudePromptsHooksDir))) {
-    return claudePromptsHooksDir;
-  }
-
-  // Legacy: pluginDir context (OpenCode plugin with old structure)
-  if (pluginDir) {
-    const legacyHooksDir = join(pluginDir, "core", "hooks");
-    if (existsSync(legacyHooksDir)) {
-      return relative(projectDir, legacyHooksDir);
-    }
-  }
-
-  // Fallback to claude-prompts location (will exist after npm install)
-  return claudePromptsHooksDir;
 }
 
 /**
@@ -234,57 +148,6 @@ export function backupClaudeSettings(projectDir: string): string | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Install hooks into .claude/settings.json.
- *
- * - Creates file if it doesn't exist
- * - Merges hooks if file exists (preserves existing hooks)
- * - Idempotent: skips if already installed
- */
-export function installHooks(
-  projectDir: string,
-  pluginDir?: string
-): HookOperationResult {
-  const hooksDir = getHooksDir(projectDir, pluginDir);
-  const ourHooks = generateHooksConfig(hooksDir);
-
-  const existing = readClaudeSettings(projectDir);
-
-  if (existing) {
-    // Check if already installed
-    if (hasOurHooks(existing.hooks?.UserPromptSubmit)) {
-      return {
-        success: true,
-        message: "Hooks already installed",
-      };
-    }
-
-    // Merge hooks
-    existing.hooks = mergeHooksConfig(existing.hooks, ourHooks);
-    writeClaudeSettings(projectDir, existing);
-
-    return {
-      success: true,
-      message: "Hooks added to existing .claude/settings.json",
-      merged: true,
-    };
-  }
-
-  // Create new settings file
-  const settings: ClaudeSettings = {
-    $comment: "Auto-generated by opencode-prompts for oh-my-opencode integration",
-    hooks: ourHooks,
-  };
-
-  writeClaudeSettings(projectDir, settings);
-
-  return {
-    success: true,
-    message: "Created .claude/settings.json with hooks",
-    created: true,
-  };
 }
 
 /**
@@ -358,25 +221,15 @@ export function uninstallHooks(projectDir: string): HookOperationResult {
 }
 
 // =============================================================================
-// Global Hooks Management (~/.claude/hooks/)
+// Global Hooks Cleanup (~/.claude/hooks/)
 // =============================================================================
-
-/**
- * Extended hook entry with additional metadata.
- */
-export interface GlobalHookEntry {
-  type: "command";
-  command: string;
-  name?: string;
-  timeout?: number;
-}
 
 /**
  * Global hook configuration (for ~/.claude/hooks/hooks.json).
  */
 export interface GlobalHookConfig {
   matcher?: string;
-  hooks: GlobalHookEntry[];
+  hooks: HookEntry[];
 }
 
 /**
@@ -395,7 +248,7 @@ export interface GlobalHooksJson {
 }
 
 /**
- * Get global paths for hooks.
+ * Get global paths for legacy hooks.
  */
 export function getGlobalPaths() {
   const claudeDir = join(homedir(), ".claude");
@@ -404,115 +257,6 @@ export function getGlobalPaths() {
   const hooksJsonPath = join(hooksDir, "hooks.json");
 
   return { claudeDir, hooksDir, ourHooksDir, hooksJsonPath };
-}
-
-/**
- * Find hooks source directory in node_modules.
- */
-export function findHooksSource(projectDir: string): string | null {
-  // Primary: node_modules/claude-prompts/hooks
-  const nmPath = join(projectDir, "node_modules", "claude-prompts", "hooks");
-  if (existsSync(nmPath)) {
-    return nmPath;
-  }
-
-  // Check parent directories for monorepo setups
-  let current = projectDir;
-  for (let i = 0; i < 5; i++) {
-    const parent = join(current, "..");
-    const parentNmPath = join(parent, "node_modules", "claude-prompts", "hooks");
-    if (existsSync(parentNmPath)) {
-      return parentNmPath;
-    }
-    current = parent;
-  }
-
-  return null;
-}
-
-/**
- * Copy hooks to global location (~/.claude/hooks/claude-prompts/).
- */
-export function copyHooksToGlobal(projectDir: string): HookOperationResult {
-  const source = findHooksSource(projectDir);
-  if (!source) {
-    return {
-      success: false,
-      message: "Could not find hooks source in node_modules/claude-prompts/hooks",
-    };
-  }
-
-  const { hooksDir, ourHooksDir } = getGlobalPaths();
-
-  try {
-    // Ensure directories exist
-    mkdirSync(hooksDir, { recursive: true });
-
-    // Copy hooks directory (recursive)
-    cpSync(source, ourHooksDir, { recursive: true });
-
-    return {
-      success: true,
-      message: `Copied hooks to ${ourHooksDir}`,
-      created: true,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: `Failed to copy hooks: ${error}`,
-    };
-  }
-}
-
-/**
- * Generate global hooks configuration with absolute paths.
- */
-export function generateGlobalHooksConfig(): GlobalHooksJson {
-  const { ourHooksDir } = getGlobalPaths();
-
-  return {
-    hooks: {
-      UserPromptSubmit: [
-        {
-          matcher: "*",
-          hooks: [
-            {
-              type: "command",
-              command: `python3 ${ourHooksDir}/prompt-suggest.py`,
-              name: "prompt-suggest",
-              timeout: 5,
-            },
-          ],
-        },
-      ],
-      PostToolUse: [
-        {
-          matcher: "prompt_engine",
-          hooks: [
-            {
-              type: "command",
-              command: `python3 ${ourHooksDir}/post-prompt-engine.py`,
-              name: "chain-tracker",
-              timeout: 5,
-            },
-          ],
-        },
-      ],
-      PreCompact: [
-        {
-          matcher: "*",
-          hooks: [
-            {
-              type: "command",
-              command: `python3 ${ourHooksDir}/pre-compact.py`,
-              name: "pre-compact",
-              timeout: 5,
-            },
-          ],
-        },
-      ],
-    },
-  };
 }
 
 /**
@@ -555,44 +299,6 @@ export function hasGlobalHooks(): boolean {
 }
 
 /**
- * Merge our hooks into global hooks.json.
- */
-export function mergeIntoGlobalHooksJson(): HookOperationResult {
-  const ourHooks = generateGlobalHooksConfig();
-  const existing = readGlobalHooksJson();
-
-  if (existing && hasGlobalHooks()) {
-    return {
-      success: true,
-      message: "Hooks already registered in ~/.claude/hooks/hooks.json",
-    };
-  }
-
-  if (existing) {
-    // Merge with existing hooks
-    for (const [event, hooks] of Object.entries(ourHooks.hooks)) {
-      const existingHooks = existing.hooks[event] ?? [];
-      existing.hooks[event] = [...existingHooks, ...(hooks ?? [])];
-    }
-
-    writeGlobalHooksJson(existing);
-    return {
-      success: true,
-      message: "Merged hooks into existing ~/.claude/hooks/hooks.json",
-      merged: true,
-    };
-  }
-
-  // Create new hooks.json
-  writeGlobalHooksJson(ourHooks);
-  return {
-    success: true,
-    message: "Created ~/.claude/hooks/hooks.json with our hooks",
-    created: true,
-  };
-}
-
-/**
  * Remove our hooks from global hooks.json.
  */
 export function removeFromGlobalHooksJson(): HookOperationResult {
@@ -614,6 +320,7 @@ export function removeFromGlobalHooksJson(): HookOperationResult {
 
   let removedCount = 0;
   const hookEvents = Object.keys(existing.hooks) as (keyof GlobalHooksJson["hooks"])[];
+  const { hooksJsonPath } = getGlobalPaths();
 
   for (const event of hookEvents) {
     const eventHooks = existing.hooks[event];
@@ -634,7 +341,7 @@ export function removeFromGlobalHooksJson(): HookOperationResult {
     }
   }
 
-  writeGlobalHooksJson(existing);
+  writeFileSync(hooksJsonPath, JSON.stringify(existing, null, 2) + "\n");
 
   return {
     success: true,
@@ -671,34 +378,7 @@ export function removeGlobalHooksDir(): HookOperationResult {
 }
 
 /**
- * Install hooks globally.
- *
- * 1. Copy hooks to ~/.claude/hooks/claude-prompts/
- * 2. Merge into ~/.claude/hooks/hooks.json
- */
-export function installGlobalHooks(projectDir: string): HookOperationResult {
-  // Step 1: Copy hooks
-  const copyResult = copyHooksToGlobal(projectDir);
-  if (!copyResult.success) {
-    return copyResult;
-  }
-
-  // Step 2: Merge into hooks.json
-  const mergeResult = mergeIntoGlobalHooksJson();
-  if (!mergeResult.success) {
-    return mergeResult;
-  }
-
-  return {
-    success: true,
-    message: `${copyResult.message}; ${mergeResult.message}`,
-    created: copyResult.created || mergeResult.created,
-    merged: mergeResult.merged,
-  };
-}
-
-/**
- * Uninstall hooks globally.
+ * Uninstall legacy hooks globally.
  *
  * 1. Remove from ~/.claude/hooks/hooks.json
  * 2. Remove ~/.claude/hooks/claude-prompts/
@@ -720,11 +400,11 @@ export function uninstallGlobalHooks(): HookOperationResult {
 }
 
 // =============================================================================
-// Project-Level Hooks (./.claude/hooks/)
+// Project-Level Legacy Hooks Cleanup (./.claude/hooks/)
 // =============================================================================
 
 /**
- * Get project-level paths for hooks.
+ * Get project-level paths for legacy hooks.
  */
 export function getProjectPaths(projectDir: string) {
   const claudeDir = join(projectDir, ".claude");
@@ -733,88 +413,6 @@ export function getProjectPaths(projectDir: string) {
   const hooksJsonPath = join(hooksDir, "hooks.json");
 
   return { claudeDir, hooksDir, ourHooksDir, hooksJsonPath };
-}
-
-/**
- * Copy hooks to project location (./.claude/hooks/claude-prompts/).
- */
-export function copyHooksToProject(projectDir: string): HookOperationResult {
-  const source = findHooksSource(projectDir);
-  if (!source) {
-    return {
-      success: false,
-      message: "Could not find hooks source in node_modules/claude-prompts/hooks",
-    };
-  }
-
-  const { hooksDir, ourHooksDir } = getProjectPaths(projectDir);
-
-  try {
-    mkdirSync(hooksDir, { recursive: true });
-    cpSync(source, ourHooksDir, { recursive: true });
-
-    return {
-      success: true,
-      message: `Copied hooks to ${ourHooksDir}`,
-      created: true,
-    };
-  } catch (error) {
-    return {
-      success: false,
-      message: `Failed to copy hooks: ${error}`,
-    };
-  }
-}
-
-/**
- * Generate project-level hooks configuration.
- */
-export function generateProjectHooksConfig(projectDir: string): GlobalHooksJson {
-  const { ourHooksDir } = getProjectPaths(projectDir);
-
-  return {
-    hooks: {
-      UserPromptSubmit: [
-        {
-          matcher: "*",
-          hooks: [
-            {
-              type: "command",
-              command: `python3 ${ourHooksDir}/prompt-suggest.py`,
-              name: "prompt-suggest",
-              timeout: 5,
-            },
-          ],
-        },
-      ],
-      PostToolUse: [
-        {
-          matcher: "prompt_engine",
-          hooks: [
-            {
-              type: "command",
-              command: `python3 ${ourHooksDir}/post-prompt-engine.py`,
-              name: "chain-tracker",
-              timeout: 5,
-            },
-          ],
-        },
-      ],
-      PreCompact: [
-        {
-          matcher: "*",
-          hooks: [
-            {
-              type: "command",
-              command: `python3 ${ourHooksDir}/pre-compact.py`,
-              name: "pre-compact",
-              timeout: 5,
-            },
-          ],
-        },
-      ],
-    },
-  };
 }
 
 /**
@@ -836,16 +434,6 @@ export function readProjectHooksJson(projectDir: string): GlobalHooksJson | null
 }
 
 /**
- * Write project-level hooks.json.
- */
-export function writeProjectHooksJson(projectDir: string, config: GlobalHooksJson): void {
-  const { hooksDir, hooksJsonPath } = getProjectPaths(projectDir);
-
-  mkdirSync(hooksDir, { recursive: true });
-  writeFileSync(hooksJsonPath, JSON.stringify(config, null, 2) + "\n");
-}
-
-/**
  * Check if our hooks are in project hooks.json.
  */
 export function hasProjectHooks(projectDir: string): boolean {
@@ -857,68 +445,7 @@ export function hasProjectHooks(projectDir: string): boolean {
 }
 
 /**
- * Merge our hooks into project hooks.json.
- */
-export function mergeIntoProjectHooksJson(projectDir: string): HookOperationResult {
-  const ourHooks = generateProjectHooksConfig(projectDir);
-  const existing = readProjectHooksJson(projectDir);
-
-  if (existing && hasProjectHooks(projectDir)) {
-    return {
-      success: true,
-      message: "Hooks already registered in project hooks.json",
-    };
-  }
-
-  if (existing) {
-    for (const [event, hooks] of Object.entries(ourHooks.hooks)) {
-      const existingHooks = existing.hooks[event] ?? [];
-      existing.hooks[event] = [...existingHooks, ...(hooks ?? [])];
-    }
-
-    writeProjectHooksJson(projectDir, existing);
-    return {
-      success: true,
-      message: "Merged hooks into existing project hooks.json",
-      merged: true,
-    };
-  }
-
-  writeProjectHooksJson(projectDir, ourHooks);
-  return {
-    success: true,
-    message: "Created project hooks.json with our hooks",
-    created: true,
-  };
-}
-
-/**
- * Install hooks to project directory.
- *
- * 1. Copy hooks to ./.claude/hooks/claude-prompts/
- * 2. Merge into ./.claude/hooks/hooks.json
- */
-export function installProjectHooks(projectDir: string): HookOperationResult {
-  const copyResult = copyHooksToProject(projectDir);
-  if (!copyResult.success) {
-    return copyResult;
-  }
-
-  const mergeResult = mergeIntoProjectHooksJson(projectDir);
-  if (!mergeResult.success) {
-    return mergeResult;
-  }
-
-  return {
-    success: true,
-    message: `${copyResult.message}; ${mergeResult.message}`,
-    created: copyResult.created || mergeResult.created,
-    merged: mergeResult.merged,
-  };
-}
-
-/**
- * Uninstall hooks from project directory.
+ * Uninstall legacy hooks from project directory.
  */
 export function uninstallProjectHooks(projectDir: string): HookOperationResult {
   const { ourHooksDir, hooksJsonPath } = getProjectPaths(projectDir);
@@ -948,7 +475,7 @@ export function uninstallProjectHooks(projectDir: string): HookOperationResult {
       }
     }
 
-    writeProjectHooksJson(projectDir, existing);
+    writeFileSync(hooksJsonPath, JSON.stringify(existing, null, 2) + "\n");
   }
 
   // Remove hooks directory
