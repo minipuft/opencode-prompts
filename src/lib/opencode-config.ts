@@ -8,8 +8,8 @@
  * Uses surgical JSON/JSONC modification to preserve comments and formatting.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import * as jsonc from "jsonc-parser";
 
@@ -83,19 +83,104 @@ export interface McpConfigResult {
   created?: boolean;
   modified?: boolean;
   skipped?: boolean;
+  warnings?: string[];
+}
+
+const MCP_COMMAND = ["npx", "claude-prompts", "--transport=stdio"];
+
+/** Key and workspace older versions of this plugin wrote their MCP entry under. */
+const LEGACY_MCP_KEY = "claude-prompts";
+const LEGACY_MCP_WORKSPACE = "./node_modules/claude-prompts";
+
+/**
+ * MCP configuration for claude-prompts.
+ *
+ * Without a workspace, no MCP_WORKSPACE is written: the server then uses its own
+ * package root. A relative value would resolve against whatever directory OpenCode
+ * starts the server in, and claude-prompts refuses a workspace that does not exist.
+ * MCP_RUNTIME_ROOT is always written, so runtime state does not live under a
+ * package root that may sit in the npx cache.
+ */
+function generateMcpConfig(runtimeRoot: string, mcpWorkspace?: string): McpServerConfig {
+  const environment: Record<string, string> = {};
+  if (mcpWorkspace !== undefined) {
+    environment.MCP_WORKSPACE = mcpWorkspace;
+  }
+  environment.MCP_RUNTIME_ROOT = runtimeRoot;
+  return { type: "local", command: [...MCP_COMMAND], environment };
 }
 
 /**
- * Default MCP configuration for claude-prompts.
+ * Per-user data directory for claude-prompts runtime state, resolved at install time:
+ * $XDG_DATA_HOME/opencode-prompts when set to an absolute path, else
+ * <homedir>/.local/share/opencode-prompts. The server creates it on demand.
  */
-function generateMcpConfig(): McpServerConfig {
-  return {
-    type: "local",
-    command: ["npx", "claude-prompts", "--transport=stdio"],
-    environment: {
-      MCP_WORKSPACE: "./node_modules/claude-prompts",
-    },
-  };
+export function resolveMcpRuntimeRoot(): string {
+  const dataHome = process.env.XDG_DATA_HOME;
+  const base = dataHome && isAbsolute(dataHome) ? dataHome : join(homedir(), ".local", "share");
+  return join(base, "opencode-prompts");
+}
+
+/** True when an MCP entry has exactly the shape older versions of this plugin wrote. */
+function isLegacyPluginMcpEntry(entry: unknown): boolean {
+  if (entry === null || typeof entry !== "object") {
+    return false;
+  }
+  const { type, command, environment, ...rest } = entry as Record<string, unknown>;
+  const env = environment as Record<string, unknown> | null | undefined;
+  return (
+    Object.keys(rest).length === 0 &&
+    type === "local" &&
+    JSON.stringify(command) === JSON.stringify(MCP_COMMAND) &&
+    typeof env === "object" &&
+    env !== null &&
+    Object.keys(env).length === 1 &&
+    env.MCP_WORKSPACE === LEGACY_MCP_WORKSPACE
+  );
+}
+
+/**
+ * Remove the legacy mcp["claude-prompts"] entry when it still has the plugin's old
+ * shape, whose relative workspace claude-prompts refuses. An entry that differs is
+ * left in place and reported.
+ *
+ * @returns Warnings for the caller to show
+ */
+function removeLegacyMcpEntry(
+  config: OpencodeConfig,
+  location: string,
+  modify: (path: jsonc.JSONPath, value: unknown) => void
+): string[] {
+  const entry = config.mcp?.[LEGACY_MCP_KEY];
+  if (entry === undefined) {
+    return [];
+  }
+  if (isLegacyPluginMcpEntry(entry)) {
+    modify(["mcp", LEGACY_MCP_KEY], undefined);
+    return [];
+  }
+  return [
+    `Left mcp["${LEGACY_MCP_KEY}"] in ${location} config unchanged: it differs from the entry ` +
+      "older opencode-prompts versions wrote. Remove it if it duplicates mcp[\"opencode-prompts\"].",
+  ];
+}
+
+/**
+ * Resolve a custom MCP_WORKSPACE to an absolute directory path.
+ *
+ * @param inputPath - Path as entered at install
+ * @param baseDir - Directory a relative path resolves against (where install runs)
+ * @throws Error naming the path when it does not exist or is not a directory
+ */
+export function resolveMcpWorkspacePath(inputPath: string, baseDir: string): string {
+  const resolved = resolve(baseDir, inputPath);
+  if (!existsSync(resolved)) {
+    throw new Error(`MCP_WORKSPACE path "${inputPath}" does not exist (resolved to ${resolved})`);
+  }
+  if (!statSync(resolved).isDirectory()) {
+    throw new Error(`MCP_WORKSPACE path "${inputPath}" is not a directory (resolved to ${resolved})`);
+  }
+  return resolved;
 }
 
 /**
@@ -234,7 +319,7 @@ export function installMcpConfig(projectDir: string | undefined): McpConfigResul
 
     // Case 3: Project config exists but no MCP anywhere - add to project
     if (existingProjectConfig && existingProjectPath) {
-      const mcpConfig = generateMcpConfig();
+      const mcpConfig = generateMcpConfig(resolveMcpRuntimeRoot());
       surgicalModifyProjectConfig(existingProjectPath, ["mcp", "opencode-prompts"], mcpConfig);
       console.log("[opencode-prompts] Added MCP configuration to opencode.json");
 
@@ -604,45 +689,39 @@ export function removePluginRegistrationFromProject(projectDir: string): PluginC
 // =============================================================================
 
 /**
- * Generate MCP config with custom workspace path.
- */
-function generateMcpConfigWithWorkspace(mcpWorkspace: string): McpServerConfig {
-  return {
-    type: "local",
-    command: ["npx", "claude-prompts", "--transport=stdio"],
-    environment: {
-      MCP_WORKSPACE: mcpWorkspace,
-    },
-  };
-}
-
-/**
  * Install MCP configuration to global config.
  * Uses surgical modification to preserve comments and formatting.
+ * An existing entry is replaced whole, so a workspace no longer chosen is removed.
  *
- * @param mcpWorkspace - Path to set as MCP_WORKSPACE
+ * @param mcpWorkspace - Absolute path to set as MCP_WORKSPACE; omit for the bundled server
  */
-export function installMcpConfigToGlobal(mcpWorkspace: string): McpConfigResult {
+export function installMcpConfigToGlobal(mcpWorkspace?: string): McpConfigResult {
   try {
     const existingConfig = readGlobalConfig();
     const existingPath = getGlobalConfigPath();
     const configPath = existingPath ?? join(GLOBAL_CONFIG_DIR, "opencode.json");
 
+    const runtimeRoot = resolveMcpRuntimeRoot();
+
     // Config exists with MCP already configured - update workspace path
     if (existingConfig && existingPath && hasMcpConfig(existingConfig)) {
-      const mcpConfig = generateMcpConfigWithWorkspace(mcpWorkspace);
+      const mcpConfig = generateMcpConfig(runtimeRoot, mcpWorkspace);
       surgicalModifyGlobalConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
+      const warnings = removeLegacyMcpEntry(existingConfig, "global", (path, value) =>
+        surgicalModifyGlobalConfig(existingPath, path, value)
+      );
 
       return {
         success: true,
-        message: "Updated MCP_WORKSPACE in global config",
+        message: "Updated MCP configuration in global config",
         modified: true,
+        warnings,
       };
     }
 
     // Config exists but no MCP - add MCP entry
     if (existingConfig && existingPath) {
-      const mcpConfig = generateMcpConfigWithWorkspace(mcpWorkspace);
+      const mcpConfig = generateMcpConfig(runtimeRoot, mcpWorkspace);
       surgicalModifyGlobalConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
 
       return {
@@ -656,7 +735,7 @@ export function installMcpConfigToGlobal(mcpWorkspace: string): McpConfigResult 
     const newConfig: OpencodeConfig = {
       $schema: "https://opencode.ai/config.json",
       mcp: {
-        "opencode-prompts": generateMcpConfigWithWorkspace(mcpWorkspace),
+        "opencode-prompts": generateMcpConfig(runtimeRoot, mcpWorkspace),
       },
     };
 
@@ -680,33 +759,40 @@ export function installMcpConfigToGlobal(mcpWorkspace: string): McpConfigResult 
 /**
  * Install MCP configuration to project config.
  * Uses surgical modification to preserve comments and formatting.
+ * An existing entry is replaced whole, so a workspace no longer chosen is removed.
  *
  * @param projectDir - Project directory (cwd) for config file
- * @param mcpWorkspace - Path to set as MCP_WORKSPACE
+ * @param mcpWorkspace - Absolute path to set as MCP_WORKSPACE; omit for the bundled server
  */
 export function installMcpConfigToProject(
   projectDir: string,
-  mcpWorkspace: string
+  mcpWorkspace?: string
 ): McpConfigResult {
   try {
     const existingConfig = readOpencodeConfig(projectDir);
     const existingPath = getConfigPath(projectDir);
 
+    const runtimeRoot = resolveMcpRuntimeRoot();
+
     // Config exists with MCP already configured - update workspace path
     if (existingConfig && existingPath && hasMcpConfig(existingConfig)) {
-      const mcpConfig = generateMcpConfigWithWorkspace(mcpWorkspace);
+      const mcpConfig = generateMcpConfig(runtimeRoot, mcpWorkspace);
       surgicalModifyProjectConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
+      const warnings = removeLegacyMcpEntry(existingConfig, "project", (path, value) =>
+        surgicalModifyProjectConfig(existingPath, path, value)
+      );
 
       return {
         success: true,
-        message: "Updated MCP_WORKSPACE in existing config",
+        message: "Updated MCP configuration in existing config",
         modified: true,
+        warnings,
       };
     }
 
     // Config exists but no MCP - add MCP entry
     if (existingConfig && existingPath) {
-      const mcpConfig = generateMcpConfigWithWorkspace(mcpWorkspace);
+      const mcpConfig = generateMcpConfig(runtimeRoot, mcpWorkspace);
       surgicalModifyProjectConfig(existingPath, ["mcp", "opencode-prompts"], mcpConfig);
 
       return {
@@ -720,7 +806,7 @@ export function installMcpConfigToProject(
     const newConfig: OpencodeConfig = {
       $schema: "https://opencode.ai/config.json",
       mcp: {
-        "opencode-prompts": generateMcpConfigWithWorkspace(mcpWorkspace),
+        "opencode-prompts": generateMcpConfig(runtimeRoot, mcpWorkspace),
       },
     };
 
