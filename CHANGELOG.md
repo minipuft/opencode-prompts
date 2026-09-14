@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0](https://github.com/minipuft/opencode-prompts/compare/v2.0.1...v2.1.0) (2026-09-14)
+
+
+### Added
+
+* enforce exported-skill gates and sync generated contracts from upstream ([6cbce0c](https://github.com/minipuft/opencode-prompts/commit/6cbce0c48513f015d24ba3a9441b2170e4261626))
+
+
+### Fixed
+
+* **cli:** remove the legacy MCP entry and pin runtime state outside the npx cache ([41c3bd1](https://github.com/minipuft/opencode-prompts/commit/41c3bd14482b5e3b9f429e03f99cc98e2bac0439))
+* **cli:** stop writing a relative MCP_WORKSPACE that claude-prompts refuses ([bd88a95](https://github.com/minipuft/opencode-prompts/commit/bd88a959a06d6c1dd591722012296bfcea91279a))
+* **cli:** the installer writes an MCP entry claude-prompts can start on ([5954e95](https://github.com/minipuft/opencode-prompts/commit/5954e95bbd9523838f1114378ef9e1268ee25ccd))
+
 ## [2.0.1](https://github.com/minipuft/opencode-prompts/compare/v2.0.0...v2.0.1) (2026-08-03)
 
 
