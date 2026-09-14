@@ -257,6 +257,9 @@ export async function executeInstall(projectDir: string, config: InstallConfig):
       : `MCP_WORKSPACE=${mcpWorkspace}`;
     if (result.success) {
       console.log(`✓ MCP configured in ${location} config with ${workspaceNote}`);
+      for (const warning of result.warnings ?? []) {
+        console.log(`⚠ ${warning}`);
+      }
     } else {
       console.log(`✗ ${result.message}`);
       hasErrors = true;
@@ -299,6 +302,8 @@ Description:
   2. MCP Server - prompt_engine tools
      • Bundled server: no MCP_WORKSPACE, the server uses its own package root
      • Or a custom MCP_WORKSPACE directory, stored as an absolute path
+     • MCP_RUNTIME_ROOT: $XDG_DATA_HOME/opencode-prompts, else ~/.local/share/opencode-prompts
+     • Re-running install removes the relative workspace older versions wrote
 
   Gate enforcement, chain tracking, and state preservation run through
   OpenCode's native plugin API — no separate hook files are installed.

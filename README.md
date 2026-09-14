@@ -45,6 +45,8 @@ Sets up hooks and registers the plugin globally.
 opencode-prompts install [options]
 ```
 
+**Existing users: re-run `opencode-prompts install`.** Older versions wrote `MCP_WORKSPACE=./node_modules/claude-prompts`, which names nothing in most projects, and claude-prompts refuses to start on a workspace that does not exist. Re-running install removes that value, including a legacy `mcp["claude-prompts"]` entry that still has the old shape.
+
 **Options:**
 
 | Flag | Description |
@@ -59,7 +61,7 @@ opencode-prompts install [options]
 | Component | Location | Description |
 |-----------|----------|-------------|
 | Plugin registration | `~/.config/opencode/opencode.json` | Adds `"opencode-prompts"` to global plugin array |
-| MCP server | `~/.config/opencode/opencode.json` | Registers the bundled claude-prompts server with no `MCP_WORKSPACE`, so it uses its own package root; a custom workspace must be an existing directory and is stored as an absolute path |
+| MCP server | `~/.config/opencode/opencode.json` | Registers the bundled claude-prompts server with no `MCP_WORKSPACE`, so it uses its own package root; a custom workspace must be an existing directory and is stored as an absolute path. `MCP_RUNTIME_ROOT` is set to `$XDG_DATA_HOME/opencode-prompts`, else `~/.local/share/opencode-prompts`, so runtime state survives clearing the npx cache |
 
 Gate enforcement, chain tracking, and state preservation run through OpenCode's native plugin API — no hook files are installed.
 
