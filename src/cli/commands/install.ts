@@ -20,16 +20,17 @@ import {
   installPluginRegistrationToProject,
   installMcpConfigToGlobal,
   installMcpConfigToProject,
+  resolveMcpWorkspacePath,
 } from "../../lib/opencode-config.js";
 import { detectExistingInstallation } from "../../lib/detect-installation.js";
 
-/** Default MCP_WORKSPACE: the bundled claude-prompts server inside this package. */
-const DEFAULT_MCP_WORKSPACE = "./node_modules/claude-prompts";
-
 /**
  * Install configuration choices.
+ *
+ * mcp "default" writes no MCP_WORKSPACE, so the bundled claude-prompts server
+ * uses its own package root wherever OpenCode starts it.
  */
-interface InstallConfig {
+export interface InstallConfig {
   plugin: "global" | "project" | "skip";
   mcp: "default" | "custom" | "skip";
   mcpPath?: string;
@@ -137,7 +138,7 @@ async function runInstallWizard(): Promise<InstallConfig> {
     choices: [
       {
         key: "1",
-        label: `Bundled server (${DEFAULT_MCP_WORKSPACE})`,
+        label: "Bundled server (no MCP_WORKSPACE)",
         value: "default",
         recommended: true,
       },
@@ -190,7 +191,7 @@ function buildSummary(
 
   // MCP
   if (config.mcp === "default") {
-    summary.push({ label: "MCP_WORKSPACE", value: DEFAULT_MCP_WORKSPACE });
+    summary.push({ label: "MCP", value: "Bundled server (no MCP_WORKSPACE)" });
   } else if (config.mcp === "custom" && config.mcpPath) {
     summary.push({ label: "MCP_WORKSPACE", value: config.mcpPath });
   } else {
@@ -203,8 +204,21 @@ function buildSummary(
 /**
  * Execute the installation with given configuration.
  */
-async function executeInstall(projectDir: string, config: InstallConfig): Promise<void> {
+export async function executeInstall(projectDir: string, config: InstallConfig): Promise<void> {
   let hasErrors = false;
+
+  // A custom workspace is stored absolute and must exist; refuse before writing any config
+  let mcpWorkspace: string | undefined;
+  if (config.mcp === "custom" && config.mcpPath) {
+    try {
+      mcpWorkspace = resolveMcpWorkspacePath(config.mcpPath, projectDir);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(`✗ ${message}`);
+      console.log("Installation cancelled: no config was written.\n");
+      process.exit(1);
+    }
+  }
 
   // Step 1: Plugin registration
   if (config.plugin !== "skip") {
@@ -232,23 +246,17 @@ async function executeInstall(projectDir: string, config: InstallConfig): Promis
   if (config.mcp !== "skip") {
     console.log("Configuring MCP server...");
 
-    let mcpWorkspace: string;
-    if (config.mcp === "default") {
-      mcpWorkspace = DEFAULT_MCP_WORKSPACE;
-    } else if (config.mcp === "custom" && config.mcpPath) {
-      mcpWorkspace = config.mcpPath;
-    } else {
-      mcpWorkspace = DEFAULT_MCP_WORKSPACE;
-    }
-
     // Route MCP config to same location as plugin registration
     const result = config.plugin === "global"
       ? installMcpConfigToGlobal(mcpWorkspace)
       : installMcpConfigToProject(projectDir, mcpWorkspace);
 
     const location = config.plugin === "global" ? "global" : "project";
+    const workspaceNote = mcpWorkspace === undefined
+      ? "the bundled server (no MCP_WORKSPACE)"
+      : `MCP_WORKSPACE=${mcpWorkspace}`;
     if (result.success) {
-      console.log(`✓ MCP configured in ${location} config with MCP_WORKSPACE=${mcpWorkspace}`);
+      console.log(`✓ MCP configured in ${location} config with ${workspaceNote}`);
     } else {
       console.log(`✗ ${result.message}`);
       hasErrors = true;
@@ -289,8 +297,8 @@ Description:
      • Project: ./opencode.json
 
   2. MCP Server - prompt_engine tools
-     • Bundled server: ./node_modules/claude-prompts
-     • Or a custom MCP_WORKSPACE path
+     • Bundled server: no MCP_WORKSPACE, the server uses its own package root
+     • Or a custom MCP_WORKSPACE directory, stored as an absolute path
 
   Gate enforcement, chain tracking, and state preservation run through
   OpenCode's native plugin API — no separate hook files are installed.

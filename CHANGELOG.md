@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **MCP server no longer configured with a relative workspace** - `opencode-prompts install` wrote `MCP_WORKSPACE=./node_modules/claude-prompts`, which resolves against the directory OpenCode starts in and names nothing in most projects; claude-prompts refuses to start on a workspace that does not exist
+  - The bundled server is now registered with no `MCP_WORKSPACE` and uses its own package root
+  - A custom workspace is stored as an absolute path, and install refuses one that does not exist
+  - **Existing users: re-run `opencode-prompts install`** to remove the relative value from your `opencode.json`
+
 ## [2.0.1](https://github.com/minipuft/opencode-prompts/compare/v2.0.0...v2.0.1) (2026-08-03)
 
 
