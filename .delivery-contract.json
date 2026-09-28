@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/minipuft/repository-standards/main/contracts/delivery-contract.schema.json",
+  "templateVersion": "1.7.0",
+  "answers": {
+    "scopes": [
+      "plugin",
+      "hooks",
+      "cli",
+      "config",
+      "deps",
+      "ci",
+      "docs",
+      "tests"
+    ],
+    "adrDir": "docs/adr",
+    "defaultBranch": "main",
+    "packageManager": "npm",
+    "nodeVersionFile": ".node-version"
+  }
+}
