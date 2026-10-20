@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { GATE_VERDICT_PASS_EXAMPLE, GATE_VERDICT_REPLY } from "./gate-verdict-guidance.js";
 import type { ChainState, GateArmedState } from "./types.js";
 
 let cachedVerbs: string[] | null = null;
@@ -79,7 +80,7 @@ export function evaluateGateBlock({ state, inputArgs, outputArgs }: GateBlockInp
   if (verdict !== undefined && verdict !== null && typeof verdict === "object") {
     const overall = String((verdict as Record<string, unknown>).overall ?? "").toUpperCase();
     if (overall === "FAIL") {
-      return `Gate FAIL (structured verdict). Fix the issues and retry with GATE_REVIEW: PASS - <reason>.`;
+      return `Gate FAIL (structured verdict). Fix the issues and retry with ${GATE_VERDICT_PASS_EXAMPLE}.`;
     }
     return null; // structured PASS or unknown shape clears the gate check
   }
@@ -87,7 +88,7 @@ export function evaluateGateBlock({ state, inputArgs, outputArgs }: GateBlockInp
   // String verdict: FAIL blocks; anything else counts as a response.
   if (typeof verdict === "string") {
     if (verdict.toUpperCase().includes("FAIL")) {
-      return `Gate FAIL: "${verdict}". Fix the issues and retry with GATE_REVIEW: PASS - <reason>.`;
+      return `Gate FAIL: "${verdict}". Fix the issues and retry with ${GATE_VERDICT_PASS_EXAMPLE}.`;
     }
     return null;
   }
@@ -104,7 +105,7 @@ export function evaluateGateBlock({ state, inputArgs, outputArgs }: GateBlockInp
   if (chainId) {
     return (
       `Gate "${state.pending_gate}" requires a response. ` +
-      `Respond with: GATE_REVIEW: PASS|FAIL - <reason>`
+      `Respond with: ${GATE_VERDICT_REPLY}`
     );
   }
   return null;
@@ -185,7 +186,7 @@ export function detectSkillGateArm(
 
 /**
  * Enforcement for an armed exported-skill gate: block EVERY tool call until a
- * GATE_REVIEW verdict clears it. A PASS verdict disarms; FAIL keeps the gate
+ * gate verdict clears it. A PASS verdict disarms; FAIL keeps the gate
  * armed with an escalation message. OQ-1 ruling: hard block, fail-open on state errors.
  *
  * @returns denial message, or null when the call may proceed.
@@ -214,12 +215,12 @@ export function evaluateArmedGateBlock(
   if (overall === "FAIL") {
     return (
       `Gate review FAILED for exported-skill gates [${gateNames}]. ` +
-      `Fix the issues and respond with GATE_REVIEW: PASS - <reason> to clear.`
+      `Fix the issues and respond with ${GATE_VERDICT_PASS_EXAMPLE} to clear.`
     );
   }
   return (
     `Exported-skill gates armed from ${armed.skillPath} [${gateNames}] require review. ` +
-    `Respond with GATE_REVIEW: PASS|FAIL - <reason> before running further tools.`
+    `Respond with ${GATE_VERDICT_REPLY} before running further tools.`
   );
 }
 

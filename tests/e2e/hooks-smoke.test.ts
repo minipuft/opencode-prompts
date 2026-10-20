@@ -188,7 +188,7 @@ describe("Chain Reminder Formatting", () => {
     expect(reminder).toContain("2/4");
     expect(reminder).toContain("[Gate]");
     expect(reminder).toContain("code-quality");
-    expect(reminder).toContain("GATE_REVIEW");
+    expect(reminder).toContain("gate_verdict");
   });
 
   it("formats inline reminder for prompt-suggest", () => {

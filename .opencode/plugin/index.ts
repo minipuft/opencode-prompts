@@ -24,6 +24,7 @@ import {
   detectSkillGateArm,
   disarmGate,
 } from "../../src/lib/gate-enforcement.js";
+import { GATE_VERDICT_REPLY } from "../../src/lib/gate-verdict-guidance.js";
 
 
 // Plugin context type (OpenCode plugin API)
@@ -200,7 +201,7 @@ export const OpenCodePromptsPlugin = async (ctx: PluginContext) => {
           : "";
 
         outputLines.push(`[Gate] ${state.pending_gate}`);
-        outputLines.push("  Respond: GATE_REVIEW: PASS|FAIL - <reason>");
+        outputLines.push(`  Respond: ${GATE_VERDICT_REPLY}`);
         if (criteriaStr) {
           outputLines.push(`  Check: ${criteriaStr}`);
         }
