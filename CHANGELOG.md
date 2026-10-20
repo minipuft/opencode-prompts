@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1](https://github.com/minipuft/opencode-prompts/compare/v2.1.0...v2.1.1) (2026-10-20)
+
+
+### Fixed
+
+* **plugin:** the plugin teaches the structured gate_verdict ([#57](https://github.com/minipuft/opencode-prompts/issues/57)) ([3d97257](https://github.com/minipuft/opencode-prompts/commit/3d97257fabae231c93dc10461543a7ba911e2ec1))
+
 ## [2.1.0](https://github.com/minipuft/opencode-prompts/compare/v2.0.1...v2.1.0) (2026-09-14)
 
 
