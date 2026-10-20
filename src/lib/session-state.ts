@@ -9,6 +9,7 @@
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { GATE_VERDICT_REPLY } from "./gate-verdict-guidance.js";
 import type { ChainState } from "./types.js";
 import { getCacheDir } from "./workspace.js";
 import { loadExtractionPatterns } from "./extraction-patterns.js";
@@ -293,7 +294,7 @@ export function formatChainReminder(
     if (verifyCmd) {
       line2 = `→ Shell verify: \`${verifyCmd}\` will validate`;
     } else if (gate) {
-      line2 = "→ GATE_REVIEW: PASS|FAIL - <reason>";
+      line2 = `→ ${GATE_VERDICT_REPLY}`;
     } else if (step > 0 && step < total) {
       line2 = `→ prompt_engine(chain_id:"${chainId}") to continue`;
     }
@@ -312,7 +313,7 @@ export function formatChainReminder(
   }
 
   if (gate) {
-    lines.push(`[Gate] ${gate} - Respond: GATE_REVIEW: PASS|FAIL - <reason>`);
+    lines.push(`[Gate] ${gate} - Respond: ${GATE_VERDICT_REPLY}`);
   }
 
   if (verifyCmd) {

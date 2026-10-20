@@ -33,7 +33,7 @@ export interface GateInfo {
 /**
  * An armed exported-skill gate: the agent read a skill whose gates/ directory
  * declares mechanical review criteria, so further tool calls are blocked until
- * a GATE_REVIEW verdict clears it (plan row 4.1/4.2).
+ * a gate verdict clears it (plan row 4.1/4.2).
  */
 export interface GateArmedState {
   /** Absolute path of the exported skill directory that armed the gate. */

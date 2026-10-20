@@ -11,7 +11,7 @@ OpenCode plugin for the [claude-prompts](https://github.com/minipuft/claude-prom
 |---------|----------|--------|
 | FAIL verdict executed anyway | `tool.execute.before` blocks prompt_engine | Gate enforcement before execution |
 | Chain state lost on `/compact` | State preservation hook | Resume from Step 3/5, not Step 1 |
-| Forgot to respond to gate review | Gate reminder injection | `GATE_REVIEW: PASS\|FAIL` prompt appears |
+| Forgot to respond to gate review | Gate reminder injection | `gate_verdict` reply format appears |
 
 | Verify loop runs forever | Shell verify tracking | Loop terminates after max attempts |
 | MCP server setup is manual | Bundled claude-prompts server | Works out of the box |
@@ -32,7 +32,7 @@ Restart OpenCode. You should see chain progress after prompt_engine calls:
 ```text
 [Chain] Step 2/4 - call prompt_engine to continue
 [Gate] code-quality
-  Respond: GATE_REVIEW: PASS|FAIL - <reason>
+  Respond: gate_verdict: {"overall":"PASS"|"FAIL","rationale":"<reason>"}
 ```
 
 ## CLI Reference
@@ -107,9 +107,9 @@ opencode-prompts uninstall --cleanup-legacy  # Also clean project hooks
 ## Features
 
 - **Gate Enforcement** — Blocks FAIL verdicts and missing gate responses before execution
-- **Exported-Skill Gates** — Reading an exported skill that ships `gates/index.json` arms its gates; every further tool call is blocked until `GATE_REVIEW: PASS|FAIL` clears them
+- **Exported-Skill Gates** — Reading an exported skill that ships `gates/index.json` arms its gates; every further tool call is blocked until a `gate_verdict` object clears them
 - **Chain Tracking** — Shows `Step 2/4` progress after each prompt_engine call
-- **Gate Reminders** — Injects `GATE_REVIEW: PASS|FAIL` format when gates are pending
+- **Gate Reminders** — Injects the `gate_verdict` object format (`{"overall":"PASS"|"FAIL","rationale":"..."}`) when gates are pending
 
 - **State Preservation** — Chain/gate/armed-gate state survives session compaction AND plugin restarts (persisted to disk)
 - **Shell Verify Tracking** — Monitors verification loop attempts
@@ -125,10 +125,10 @@ The upstream exporter writes a `gates/index.json` manifest beside every gated sk
 → gates armed: workflow-preflight, plan-quality, ... (12)
 
 [bash] blocked: "Exported-skill gates armed from ... require review.
-Respond with GATE_REVIEW: PASS|FAIL - <reason> before running further tools."
+Respond with gate_verdict: {"overall":"PASS"|"FAIL","rationale":"<reason>"} before running further tools."
 ```
 
-A `PASS` verdict disarms the gate (durably); `FAIL` keeps it armed with an escalation message. Resolution verbs (`gate_action`, `cancel`) are loaded from the bundled claude-prompts contract so legitimate gate exits are never trapped.
+A `PASS` verdict disarms the gate (durably); `FAIL` keeps it armed with an escalation message. The plugin teaches the structured `gate_verdict` object that claude-prompts 6.0 requires, and still reads the legacy `GATE_REVIEW: PASS - <reason>` string so it keeps working against a 5.x engine. Resolution verbs (`gate_action`, `cancel`) are loaded from the bundled claude-prompts contract so legitimate gate exits are never trapped.
 
 ## Hooks
 
